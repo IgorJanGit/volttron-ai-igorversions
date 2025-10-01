@@ -7,6 +7,7 @@ from typing import List, Optional
 import os
 
 from .ai_service import AIService
+from .volttron_commands import start_volttron, stop_volttron
 
 # Global app instance
 app = None
@@ -76,5 +77,23 @@ def create_app(model_name: str) -> FastAPI:
                 "groq (e.g., groq:mixtral-8x7b-32768)"
             ]
         }
+    
+    @app.post("/volttron/start")
+    async def start_volttron_endpoint():
+        """Start VOLTTRON platform."""
+        try:
+            result = start_volttron()
+            return {"status": "success", "message": result}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error starting VOLTTRON: {str(e)}")
+    
+    @app.post("/volttron/stop")
+    async def stop_volttron_endpoint():
+        """Stop VOLTTRON platform."""
+        try:
+            result = stop_volttron()
+            return {"status": "success", "message": result}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error stopping VOLTTRON: {str(e)}")
     
     return app
