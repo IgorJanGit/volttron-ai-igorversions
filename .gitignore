@@ -36,4 +36,73 @@ Thumbs.db
 
 # Logs
 *.log
+
+# VOLTTRON specific ignores
+# VOLTTRON home directory and data
+volttron_home/
+VOLTTRON_HOME/
+.volttron/
+
+# VOLTTRON config and certificates
+config/
+certificates/
+*.pem
+*.crt
+*.key
+
+# VOLTTRON fake driver specific
+config/fake.config
+config/fake.csv
+config/registry_configs/
+config/devices/
+
+# VOLTTRON database files
+*.db
+*.sqlite
+
+# VOLTTRON platform specific
+platform_config.yml
+.installed_agents
+.agent_config
+
+# Chat app specific
+app.log
+nohup.out
+myapp.log
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Package installations
+site-packages/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Fake driver installations and libraries
+fake_driver/
+volttron-fake-driver/
+fake-driver/
+fake_sensors/
+**/fake_driver_lib/
+
+# Agent installations and wheels
+*.whl
+agents/
+installed_agents/
+agent_packages/
+*.egg-link
+
+# Pip and package manager caches
+.pip/
+pip-cache/
+.cache/pip/
+__pip-runner__/
+
+# Tests and diagnostics
+tests/
+
+# GitHub Copilot
 .github/copilot-instructions.md
