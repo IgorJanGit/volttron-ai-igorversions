@@ -169,6 +169,42 @@ VOLTTRON_HOME: `{volttron_home}`
 Environment is properly configured!
 """
 
+def kill_existing_volttron_processes():
+    """Kill any existing VOLTTRON processes to prevent conflicts."""
+    try:
+        # Find all VOLTTRON processes
+        result = subprocess.run(
+            ["pgrep", "-f", "volttron"],
+            capture_output=True, text=True, timeout=10
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            killed_pids = []
+            
+            for pid in pids:
+                try:
+                    # Try to kill the process gracefully first
+                    subprocess.run(["kill", "-TERM", pid], check=True, timeout=5)
+                    killed_pids.append(pid)
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    try:
+                        # Force kill if graceful kill doesn't work
+                        subprocess.run(["kill", "-KILL", pid], check=True, timeout=5)
+                        killed_pids.append(f"{pid} (force)")
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                        pass
+            
+            if killed_pids:
+                return f"🔄 Stopped existing VOLTTRON processes: PIDs {', '.join(killed_pids)}"
+            else:
+                return "⚠️ Found VOLTTRON processes but couldn't stop them"
+        else:
+            return ""  # No processes found, which is good
+            
+    except Exception as e:
+        return f"⚠️ Error checking for existing VOLTTRON processes: {str(e)}"
+
 def start_volttron():
     """Start volttron in the background using the correct virtual environment."""
     try:
@@ -179,6 +215,9 @@ def start_volttron():
         if not volttron_cmd:
             return check_volttron_installation()
         
+        # Kill any existing VOLTTRON processes to prevent conflicts
+        cleanup_msg = kill_existing_volttron_processes()
+        
         # Set environment variables for VOLTTRON
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
@@ -186,15 +225,27 @@ def start_volttron():
         # Create VOLTTRON_HOME directory if it doesn't exist
         os.makedirs(volttron_home, exist_ok=True)
         
+        # Wait a moment for processes to fully terminate
+        if cleanup_msg:
+            import time
+            time.sleep(2)
+        
         # Start volttron in the background
         process = subprocess.Popen(
             [volttron_cmd, "-vv", "-l", "volttron.log"], 
             env=env,
             cwd=volttron_home
         )
-        return f"VOLTTRON started with PID {process.pid} (VOLTTRON_HOME: {volttron_home})"
+        
+        success_msg = f"✅ VOLTTRON started with PID {process.pid} (VOLTTRON_HOME: {volttron_home})"
+        
+        if cleanup_msg:
+            return f"{cleanup_msg}\n{success_msg}"
+        else:
+            return success_msg
+            
     except Exception as e:
-        return f"Error starting VOLTTRON: {str(e)}"
+        return f"❌ Error starting VOLTTRON: {str(e)}"
 
 def stop_volttron():
     """Stop volttron platform using the correct virtual environment."""
@@ -293,8 +344,8 @@ Let me break down what you're seeing:
 """
                 return f"{warning_msg}{explanation}\n{readable_status}\n\n💬 Need help with any of these agents? Just ask!"
             else:
-                # Return conversational summary instead of raw table
-                return f"{warning_msg}{conversational_summary}"
+                # For brief status, show both the formatted table AND conversational summary
+                return f"{warning_msg}📋 **My Current Agents:**\n\n{readable_status}\n\n💬 **Summary:** {conversational_summary}"
                 
         else:
             error_msg = result.stderr or result.stdout or "Unknown error"
@@ -336,7 +387,7 @@ def make_status_conversational(status_output):
     
     # Parse each agent line
     for line in lines[1:]:
-        if not line.strip():
+        if not line.strip() or "UUID" in line:  # Skip header or empty lines
             continue
             
         parts = line.split()
@@ -345,14 +396,34 @@ def make_status_conversational(status_output):
             agent_name = parts[1]
             identity = parts[2]
             
-            # Determine status - since we don't have explicit status in the output,
-            # assume agents listed are installed but not running
-            status = "NOT_RUNNING"
+            # Determine status - look for status indicators in the line
+            status = "STOPPED"  # Default assumption
             health = "UNKNOWN"
-            not_running_count += 1
             
-            # Extract just the agent type from full name
-            agent_type = agent_name.split('-')[1] if '-' in agent_name else agent_name
+            # Look through all parts for status/health indicators
+            line_upper = line.upper()
+            if any(word in line_upper for word in ["RUNNING", "STARTED", "ACTIVE"]):
+                status = "RUNNING"
+                running_count += 1
+            else:
+                not_running_count += 1
+                
+            if any(word in line_upper for word in ["BAD", "ERROR", "UNHEALTHY"]):
+                health = "BAD"
+                bad_health_count += 1
+            elif any(word in line_upper for word in ["GOOD", "HEALTHY", "OK"]):
+                health = "GOOD"
+            
+            # Extract agent type - handle multiple listeners
+            if 'listener' in agent_name.lower():
+                agent_type = "listener"
+            elif 'platform' in agent_name.lower():
+                agent_type = "platform"
+            elif 'driver' in agent_name.lower():
+                agent_type = "driver"
+            else:
+                # Extract type from agent name
+                agent_type = agent_name.split('-')[1] if '-' in agent_name else agent_name.split('.')[0] if '.' in agent_name else agent_name[:10]
             
             agents.append({
                 'uuid': uuid,
@@ -366,28 +437,43 @@ def make_status_conversational(status_output):
     if not agents:
         return "I'm running but don't see any agents right now."
     
+    # Count agent types, including multiple instances
+    agent_type_counts = {}
+    for agent in agents:
+        agent_type = agent['type']
+        if agent_type in agent_type_counts:
+            agent_type_counts[agent_type] += 1
+        else:
+            agent_type_counts[agent_type] = 1
+    
     # Create conversational summary
     agent_count = len(agents)
-    if agent_count == 1:
-        agent = agents[0]
-        if agent['status'] == 'RUNNING':
-            return f"I've got 1 agent running - my {agent['type']} agent. It's working fine!"
+    
+    # Build agent type description
+    agent_descriptions = []
+    for agent_type, count in agent_type_counts.items():
+        if count > 1:
+            agent_descriptions.append(f"{count} {agent_type} agents")
         else:
-            return f"I have 1 agent installed - the {agent['type']} agent - but it's not running right now. Want me to start it?"
+            agent_descriptions.append(f"{agent_type}")
+    
+    if len(agent_descriptions) == 1:
+        agent_list = agent_descriptions[0]
+    elif len(agent_descriptions) == 2:
+        agent_list = f"{agent_descriptions[0]} and {agent_descriptions[1]}"
     else:
-        agent_types = [agent['type'] for agent in agents]
-        
-        if not_running_count == agent_count:
-            agent_list = ", ".join(agent_types[:-1]) + f" and {agent_types[-1]}" if len(agent_types) > 1 else agent_types[0]
-            return f"I have {agent_count} agents installed ({agent_list}) but none of them are running. Should I start them up?"
-        elif running_count == agent_count:
-            agent_list = ", ".join(agent_types[:-1]) + f" and {agent_types[-1]}" if len(agent_types) > 1 else agent_types[0]
-            if bad_health_count > 0:
-                return f"I've got {agent_count} agents running ({agent_list}), but {bad_health_count} of them seem to be having issues. Want me to check what's wrong?"
-            else:
-                return f"All {agent_count} agents are running great! ({agent_list})"
+        agent_list = ", ".join(agent_descriptions[:-1]) + f", and {agent_descriptions[-1]}"
+    
+    # Create status summary
+    if not_running_count == agent_count:
+        return f"I have {agent_count} agents installed ({agent_list}) but none of them are running. Should I start them up?"
+    elif running_count == agent_count:
+        if bad_health_count > 0:
+            return f"I've got {agent_count} agents running ({agent_list}), but {bad_health_count} of them seem to be having issues. Want me to check what's wrong?"
         else:
-            return f"I have {agent_count} agents - {running_count} running and {not_running_count} stopped. The running ones are working fine!"
+            return f"All {agent_count} agents are running great! ({agent_list})"
+    else:
+        return f"I have {agent_count} agents ({agent_list}) - {running_count} running and {not_running_count} stopped. The running ones are working fine!"
 
 def make_status_readable(status_output):
     """Convert vctl status output to more readable format."""
@@ -398,58 +484,62 @@ def make_status_readable(status_output):
     if len(lines) < 2:
         return status_output
     
-    header = lines[0]
+    # Keep the original header if it exists, or create a better one
+    original_header = lines[0]
     result_lines = []
     
-    # Always add a clear header
-    result_lines.append("UUID   AGENT                      IDENTITY             STATUS       HEALTH")
+    # Create a cleaner header
+    result_lines.append("UUID   AGENT                             IDENTITY                     STATUS       HEALTH")
+    result_lines.append("====   =================================  ===========================  ===========  =======")
     
     # Process each agent line
     for line in lines[1:]:
-        if not line.strip():
+        if not line.strip() or line.strip() == original_header:
             continue
             
-        # Parse the line - handle the case where STATUS/HEALTH columns are empty
+        # Split by whitespace but preserve spacing for formatting
         parts = line.split()
         if len(parts) >= 3:  # UUID, AGENT, IDENTITY at minimum
-            uuid = parts[0]
-            agent = parts[1]
-            identity = parts[2] if len(parts) > 2 else ""
+            uuid = parts[0][:6]  # Limit UUID to 6 chars for display
+            agent = parts[1][:32] if len(parts) > 1 else ""  # Agent name
+            identity = parts[2][:27] if len(parts) > 2 else ""  # Identity
             
-            # Check if there are more parts that might be tag, priority, status, health
-            tag = parts[3] if len(parts) > 3 and parts[3] else ""
-            priority = parts[4] if len(parts) > 4 and parts[4] else ""
-            status = parts[5] if len(parts) > 5 and parts[5] else ""
-            health = parts[6] if len(parts) > 6 and parts[6] else ""
+            # Look for status and health in remaining parts
+            # The vctl status format varies, so we need to be flexible
+            remaining_parts = parts[3:] if len(parts) > 3 else []
             
-            # Determine readable status
-            readable_status = "NOT_RUNNING"  # Default assumption for installed agents
-            readable_health = "UNKNOWN"
+            # Default values
+            status = "STOPPED"
+            health = "UNKNOWN"
             
-            # Convert status codes
-            if status:
-                if status.upper() in ["RUNNING", "STARTED", "ACTIVE"] or status == "1":
-                    readable_status = "RUNNING"
-                elif status.upper() in ["STOPPED", "INACTIVE", "DISABLED"] or status == "0":
-                    readable_status = "STOPPED"
-                elif status:
-                    readable_status = status.upper()
-            
-            # Convert health codes  
-            if health:
-                if health.upper() in ["GOOD", "OK", "HEALTHY"] or health == "1":
-                    readable_health = "GOOD"
-                elif health.upper() in ["BAD", "ERROR", "UNHEALTHY"] or health == "0":
-                    readable_health = "BAD"
-                elif health:
-                    readable_health = health.upper()
+            # Try to extract status and health from remaining parts
+            # Common patterns: TAG, PRIORITY, STATUS, HEALTH
+            if remaining_parts:
+                # Look for status indicators in the remaining parts
+                for part in remaining_parts:
+                    part_upper = part.upper()
+                    if part_upper in ["RUNNING", "STARTED", "ACTIVE", "ENABLED"]:
+                        status = "RUNNING"
+                    elif part_upper in ["STOPPED", "DISABLED", "INACTIVE"]:
+                        status = "STOPPED"
+                    elif part_upper in ["GOOD", "HEALTHY", "OK"]:
+                        health = "GOOD"
+                    elif part_upper in ["BAD", "UNHEALTHY", "ERROR"]:
+                        health = "BAD"
             
             # Format the line with consistent spacing
-            formatted_line = f"{uuid:<6} {agent:<26} {identity:<20} {readable_status:<12} {readable_health}"
+            formatted_line = f"{uuid:<6} {agent:<32} {identity:<27} {status:<11} {health}"
             result_lines.append(formatted_line)
         else:
-            # If we can't parse it, keep the original line
-            result_lines.append(line)
+            # If we can't parse it properly, show the original line with a note
+            result_lines.append(f"       {line.strip()}")
+    
+    # If no agents were found in the expected format, show the raw output with formatting
+    if len(result_lines) <= 2:  # Only header lines
+        result_lines = ["📋 **Agent Status (Raw Output):**", ""]
+        for line in lines:
+            if line.strip():
+                result_lines.append(f"   {line}")
     
     return '\n'.join(result_lines)
 
@@ -595,6 +685,135 @@ def vctl_stop_agent(agent_uuid_or_tag):
             return f"❌ Error stopping agent '{agent_uuid_or_tag}': {error_msg}"
     except Exception as e:
         return f"Error stopping agent: {str(e)}"
+
+def vctl_uninstall_agent(agent_uuid_or_tag):
+    """Uninstall/remove a specific agent by UUID or tag."""
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return check_volttron_installation()
+        
+        if not agent_uuid_or_tag:
+            return "❌ Please specify an agent UUID or tag to uninstall. Use 'vctl status' to see available agents."
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # Stop the agent first if it's running
+        stop_result = subprocess.run(
+            [vctl_cmd, "stop", agent_uuid_or_tag], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home
+        )
+        
+        # Then uninstall the agent
+        result = subprocess.run(
+            [vctl_cmd, "remove", agent_uuid_or_tag], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home
+        )
+        
+        if result.returncode == 0:
+            return f"🗑️ Agent '{agent_uuid_or_tag}' uninstalled successfully."
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            return f"❌ Error uninstalling agent '{agent_uuid_or_tag}': {error_msg}"
+    except Exception as e:
+        return f"Error uninstalling agent: {str(e)}"
+
+def vctl_uninstall_all_listeners():
+    """Uninstall all listener agents to clean up duplicates."""
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return check_volttron_installation()
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # Get current agent status
+        status_result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home
+        )
+        
+        if status_result.returncode != 0:
+            return "❌ Could not get agent status. Make sure VOLTTRON is running."
+        
+        # Parse status output to find listener agents
+        lines = status_result.stdout.strip().split('\n')
+        listener_uuids = []
+        
+        for line in lines[1:]:  # Skip header
+            if not line.strip():
+                continue
+                
+            parts = line.split()
+            if len(parts) >= 2:
+                uuid = parts[0]
+                agent_name = parts[1]
+                
+                if 'listener' in agent_name.lower():
+                    listener_uuids.append(uuid)
+        
+        if not listener_uuids:
+            return "✅ No listener agents found to uninstall."
+        
+        # Uninstall each listener agent
+        removed_agents = []
+        failed_agents = []
+        
+        for uuid in listener_uuids:
+            # Stop first
+            subprocess.run([vctl_cmd, "stop", uuid], capture_output=True, env=env, cwd=volttron_home)
+            
+            # Then remove
+            result = subprocess.run(
+                [vctl_cmd, "remove", uuid], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home
+            )
+            
+            if result.returncode == 0:
+                removed_agents.append(uuid)
+            else:
+                failed_agents.append(f"{uuid}: {result.stderr or result.stdout}")
+        
+        # Build response
+        response_parts = []
+        
+        if removed_agents:
+            response_parts.append(f"🗑️ Successfully removed {len(removed_agents)} listener agents:")
+            for uuid in removed_agents:
+                response_parts.append(f"   • {uuid}")
+        
+        if failed_agents:
+            response_parts.append(f"\n❌ Failed to remove {len(failed_agents)} agents:")
+            for failure in failed_agents:
+                response_parts.append(f"   • {failure}")
+        
+        if removed_agents:
+            response_parts.append(f"\n✅ Cleanup complete! Your platform driver is still running.")
+        
+        return "\n".join(response_parts)
+        
+    except Exception as e:
+        return f"Error during cleanup: {str(e)}"
 
 def vctl_health():
     """Get health status of all agents."""

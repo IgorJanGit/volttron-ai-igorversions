@@ -8,7 +8,8 @@ from .volttron_commands import (
     show_formatting_test, get_detailed_installation_help, get_volttron_next_steps,
     vctl_install_platform_driver, install_fake_driver_library, create_fake_driver_config,
     store_fake_driver_config, setup_fake_driver_monitoring, subscribe_to_fake_data,
-    show_recent_logs
+    show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
+    vctl_uninstall_agent, vctl_uninstall_all_listeners
 )
 
 class AIService:
@@ -22,7 +23,37 @@ class AIService:
         self.conversation_history = []  # Track conversation for context
         self.last_numbered_options = {}  # Track last numbered options provided
         self.fake_driver_setup_state = "not_started"  # Track fake driver setup progress
+        self.volttron_checked = False  # Track if we've checked VOLTTRON installation
         self._setup_agent()
+    
+    def _should_check_volttron_installation(self, message: str) -> bool:
+        """
+        Determine if we should check VOLTTRON installation based on the message content.
+        Returns True for first-time interactions or general VOLTTRON queries.
+        """
+        message_lower = message.lower().strip()
+        
+        # Don't check again if we already checked in this session
+        if self.volttron_checked:
+            return False
+        
+        # Check on first interaction (empty conversation history)
+        if len(self.conversation_history) == 0:
+            return True
+        
+        # Check if user is asking general questions that suggest they're new
+        general_queries = [
+            'hello', 'hi', 'hey', 'start', 'begin', 'help', 'what can you do',
+            'how do i', 'getting started', 'setup', 'install', 'volttron',
+            'what is volttron', 'how does volttron work', 'agents', 'status',
+            'what agents', 'show me', 'list', 'what can i install'
+        ]
+        
+        # If message contains any general query terms, check installation
+        if any(term in message_lower for term in general_queries):
+            return True
+        
+        return False
     
     def _detect_numbered_option_request(self, message: str) -> tuple[bool, int]:
         """
@@ -141,6 +172,8 @@ class AIService:
             return start_volttron()
         elif 'stop volttron' in title:
             return stop_volttron()
+        elif 'kill volttron' in title or 'cleanup volttron' in title or 'force stop volttron' in title:
+            return kill_existing_volttron_processes()
         elif 'agent list' in title or 'list agents' in title:
             return vctl_list_agents()
         elif 'config directory' in title or 'create the config directory' in title:
@@ -226,6 +259,18 @@ class AIService:
             if is_numbered_request and self.last_numbered_options:
                 return self._execute_numbered_option(option_num)
             
+            # Check VOLTTRON installation if appropriate
+            if self._should_check_volttron_installation(message):
+                self.volttron_checked = True
+                installation_result = check_volttron_installation()
+                
+                # If VOLTTRON is not installed, return the helpful installation message
+                if "ü§ñ Hey there! I don't see VOLTTRON installed" in installation_result:
+                    return installation_result
+                
+                # If VOLTTRON is installed, continue with normal AI response but note the status
+                self.conversation_history.append({"role": "system", "content": f"VOLTTRON Installation Status: {installation_result}"})
+            
             # Add message to conversation history
             self.conversation_history.append({"role": "user", "content": message})
             
@@ -252,6 +297,7 @@ Instead of boring technical output, I chat like this:
 üõ†Ô∏è WHAT I CAN DO FOR YOU:
 - start_volttron(): Get me up and running
 - stop_volttron(): Put me to sleep
+- kill_existing_volttron_processes(): Force stop any competing VOLTTRON instances
 - check_volttron_status(): See how I'm feeling overall
 - read_volttron_log(): Tell you about my recent adventures
 - vctl_status(): Quick check on my agent family
@@ -259,6 +305,8 @@ Instead of boring technical output, I chat like this:
 - vctl_list_agents(): Show you all my agent buddies
 - vctl_start_agent(uuid_or_tag): Wake up a specific agent
 - vctl_stop_agent(uuid_or_tag): Put an agent to sleep
+- vctl_uninstall_agent(uuid_or_tag): Remove a specific agent permanently
+- vctl_uninstall_all_listeners(): Clean up duplicate listener agents
 - vctl_health(): Check if my agents are feeling good
 - show_formatting_test(): Show you how pretty my responses can be
 - get_detailed_installation_help(): Help someone get me installed
@@ -340,6 +388,7 @@ If you want me to actually DO something, respond with exactly one of:
 - EXECUTE_VCTL_STOP:agent_id
 - EXECUTE_VCTL_HEALTH
 - EXECUTE_FORMATTING_TEST
+- EXECUTE_CHECK_INSTALLATION (check if VOLTTRON is installed on the system)
 - EXECUTE_DETAILED_INSTALL
 - EXECUTE_NEXT_STEPS
 - EXECUTE_INSTALL_PLATFORM_DRIVER
@@ -383,6 +432,12 @@ Remember: I'm not just a platform - I'm VOLTTRON with personality! Let's chat! 
                 elif "EXECUTE_STOP_VOLTTRON" in ai_response:
                     result = stop_volttron()
                     return result
+                elif "EXECUTE_KILL_VOLTTRON" in ai_response:
+                    result = kill_existing_volttron_processes()
+                    return result
+                elif "EXECUTE_KILL_VOLTTRON" in ai_response:
+                    result = kill_existing_volttron_processes()
+                    return result
                 elif "EXECUTE_STATUS_VOLTTRON" in ai_response:
                     result = check_volttron_status()
                     return result
@@ -408,11 +463,22 @@ Remember: I'm not just a platform - I'm VOLTTRON with personality! Let's chat! 
                     agent_id = ai_response.split("EXECUTE_VCTL_STOP:")[1].strip()
                     result = vctl_stop_agent(agent_id)
                     return result
+                elif "EXECUTE_VCTL_UNINSTALL:" in ai_response:
+                    # Extract agent ID from command
+                    agent_id = ai_response.split("EXECUTE_VCTL_UNINSTALL:")[1].strip()
+                    result = vctl_uninstall_agent(agent_id)
+                    return result
+                elif "EXECUTE_VCTL_UNINSTALL_ALL_LISTENERS" in ai_response:
+                    result = vctl_uninstall_all_listeners()
+                    return result
                 elif "EXECUTE_VCTL_HEALTH" in ai_response:
                     result = vctl_health()
                     return result
                 elif "EXECUTE_FORMATTING_TEST" in ai_response:
                     result = show_formatting_test()
+                    return result
+                elif "EXECUTE_CHECK_INSTALLATION" in ai_response:
+                    result = check_volttron_installation()
                     return result
                 elif "EXECUTE_DETAILED_INSTALL" in ai_response:
                     result = get_detailed_installation_help()
