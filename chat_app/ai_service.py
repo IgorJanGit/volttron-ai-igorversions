@@ -1,6 +1,7 @@
 from pydantic_ai import Agent
 from typing import Optional
 import os
+import re
 import openai
 from .volttron_commands import (
     start_volttron, stop_volttron, check_volttron_status, read_volttron_log,
@@ -176,6 +177,43 @@ class AIService:
             return kill_existing_volttron_processes()
         elif 'agent list' in title or 'list agents' in title:
             return vctl_list_agents()
+        elif 'uninstall all listeners' in title or 'remove all listeners' in title or 'cleanup listeners' in title:
+            return vctl_uninstall_all_listeners()
+        elif 'uninstall' in title or 'remove agent' in title or 'delete agent' in title:
+            # Try to extract agent UUID or name from the message
+            words = message.lower().split()
+            agent_id = None
+            
+            # Look for patterns like "uninstall 1", "uninstall agent 1", "remove 1", etc.
+            for i, word in enumerate(words):
+                if word in ['uninstall', 'remove', 'delete']:
+                    # Check next word
+                    if i + 1 < len(words):
+                        next_word = words[i + 1]
+                        if next_word != 'agent':  # Direct ID like "uninstall 1"
+                            agent_id = next_word
+                        elif i + 2 < len(words):  # "uninstall agent 1" format
+                            agent_id = words[i + 2]
+                    break
+            
+            # Also check for standalone numbers at the end (like "can we uninstall 1")
+            if not agent_id:
+                for word in words:
+                    if word.isdigit():
+                        agent_id = word
+                        break
+            
+            if agent_id:
+                return vctl_uninstall_agent(agent_id)
+            else:
+                return """❌ **Agent ID/UUID required for uninstall**
+
+Please specify which agent to uninstall. Examples:
+• **"Uninstall 1"** - Remove agent with UUID 1
+• **"Remove agent platform.driver"** - Remove by identity
+• **"Delete agent listener"** - Remove by tag
+
+💡 **Tip:** Use **"List agents"** first to see available agents with their UUIDs."""
         elif 'config directory' in title or 'create the config directory' in title:
             self.fake_driver_setup_state = "config_created"
             return create_fake_driver_config()  # This handles directory creation
@@ -254,6 +292,57 @@ class AIService:
     async def generate_response(self, message: str) -> str:
         """Generate a response to the user's message."""
         try:
+            # DIRECT COMMAND DETECTION - Handle uninstall/remove commands immediately
+            message_lower = message.lower().strip()
+            
+            # Special handling for "platform driver" - get the actual UUID
+            if any(term in message_lower for term in ['uninstall', 'remove', 'delete']) and 'platform' in message_lower and 'driver' in message_lower:
+                # This is trying to uninstall the platform driver - get its UUID from status
+                try:
+                    from .volttron_commands import vctl_status as get_vctl_status
+                    status_result = get_vctl_status()
+                    if "platform.driver" in status_result:
+                        # Extract UUID from status - look for pattern like "f      volttron-platform-driver"
+                        lines = status_result.split('\n')
+                        for line in lines:
+                            if 'platform.driver' in line or 'platform-driver' in line:
+                                parts = line.strip().split()
+                                if parts:
+                                    uuid = parts[0]
+                                    if uuid not in ['UUID', 'System']:  # Skip header
+                                        return vctl_uninstall_agent(uuid)
+                except Exception as e:
+                    # Fall back to normal parsing - don't fail silently for debugging
+                    pass
+            
+            # Check for direct uninstall/remove commands with specific patterns
+            uninstall_patterns = [
+                r'uninstall\s+(\w+)',
+                r'remove\s+(\w+)', 
+                r'delete\s+(\w+)',
+                r'uninstall\s+agent\s+(\w+)',
+                r'remove\s+agent\s+(\w+)',
+                r'delete\s+agent\s+(\w+)'
+            ]
+            
+            for pattern in uninstall_patterns:
+                match = re.search(pattern, message_lower)
+                if match:
+                    agent_id = match.group(1)
+                    if agent_id and agent_id not in ['agent', 'the', 'platform']:  # Filter out common words
+                        return vctl_uninstall_agent(agent_id)
+            
+            # Check for simple patterns like "remve agent f" or "delete agent f"
+            words = message_lower.split()
+            for i, word in enumerate(words):
+                if word in ['uninstall', 'remove', 'delete', 'remve']:  # Include common typo
+                    # Look for agent ID in next few words
+                    for j in range(i+1, min(i+4, len(words))):
+                        next_word = words[j]
+                        if next_word not in ['agent', 'the', 'a', 'an', 'platform', 'driver'] and len(next_word) <= 10:
+                            # This looks like an agent ID
+                            return vctl_uninstall_agent(next_word)
+            
             # Check if user is referencing a numbered option from previous response
             is_numbered_request, option_num = self._detect_numbered_option_request(message)
             if is_numbered_request and self.last_numbered_options:
