@@ -18,6 +18,9 @@ var/
 wheels/
 *.egg-info/
 .installed.cfg
+
+# Chat app conversation history (contains personal data)
+conversation_history.json
 *.egg
 MANIFEST
 

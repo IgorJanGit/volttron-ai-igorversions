@@ -1,7 +1,7 @@
-from pydantic_ai import Agent
-from typing import Optional
+from typing import Optional, Dict, List, Any, Tuple
 import os
 import re
+import json
 import openai
 from .volttron_commands import (
     start_volttron, stop_volttron, check_volttron_status, read_volttron_log,
@@ -25,7 +25,35 @@ class AIService:
         self.last_numbered_options = {}  # Track last numbered options provided
         self.fake_driver_setup_state = "not_started"  # Track fake driver setup progress
         self.volttron_checked = False  # Track if we've checked VOLTTRON installation
+        self.conversation_file = "conversation_history.json"  # File to persist conversation
+        self._load_conversation_history()  # Load any previous conversation
         self._setup_agent()
+    
+    def _load_conversation_history(self):
+        """Load conversation history from file if it exists."""
+        try:
+            if os.path.exists(self.conversation_file):
+                with open(self.conversation_file, 'r') as f:
+                    data = json.load(f)
+                    # Only load recent history (last 20 messages) to avoid growing too large
+                    self.conversation_history = data.get('history', [])[-20:]
+                    print(f"Loaded {len(self.conversation_history)} previous conversation messages")
+        except Exception as e:
+            print(f"Could not load conversation history: {e}")
+            self.conversation_history = []
+    
+    def _save_conversation_history(self):
+        """Save conversation history to file."""
+        try:
+            # Only save last 20 messages to keep file size reasonable
+            data = {
+                'history': self.conversation_history[-20:],
+                'timestamp': str(os.path.getmtime(self.conversation_file)) if os.path.exists(self.conversation_file) else None
+            }
+            with open(self.conversation_file, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Could not save conversation history: {e}")
     
     def _should_check_volttron_installation(self, message: str) -> bool:
         """
@@ -56,7 +84,7 @@ class AIService:
         
         return False
     
-    def _detect_numbered_option_request(self, message: str) -> tuple[bool, int]:
+    def _detect_numbered_option_request(self, message: str) -> Tuple[bool, int]:
         """
         Detect if user is referencing a numbered option from previous response.
         Returns: (is_numbered_request, option_number)
@@ -263,7 +291,7 @@ Please specify which agent to uninstall. Examples:
             return check_volttron_status()
     
     def _setup_agent(self):
-        """Setup the Pydantic-AI agent with the specified model or custom webapp if configured."""
+        """Setup the AI client with the specified model or custom webapp if configured."""
         ai_webapp_url = os.getenv("AI_WEBAPP_URL")
         ai_api_key = os.getenv("AI_API_KEY")
         
@@ -277,15 +305,37 @@ Please specify which agent to uninstall. Examples:
                 # Extract just the model name without provider prefix
                 self.custom_model = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
             else:
-                # Use default provider logic (OpenAI, Anthropic, etc.) with pydantic-ai
-                self.agent = Agent(
-                    self.model_name,
-                    system_prompt=(
-                        "You are a helpful AI assistant in a chat application. "
-                        "Provide clear, concise, and helpful responses to user questions. "
-                        "Be friendly and conversational while maintaining accuracy."
-                    )
-                )
+                # Use standard OpenAI API - Python 3.8 compatible approach
+                if not os.getenv('OPENAI_API_KEY'):
+                    raise ValueError("OPENAI_API_KEY environment variable is required")
+                
+                # OpenAI client will automatically use OPENAI_API_KEY environment variable
+                
+            # Store system prompt for conversation context (Python 3.8 compatible)
+            self.system_prompt = (
+                "You are VOLTTRON AI Assistant, an intelligent assistant for VOLTTRON platform operations. "
+                "You maintain conversation context and remember previous interactions within this chat session. "
+                "\n\nCORE RESPONSIBILITIES:\n"
+                "- Assist users with VOLTTRON platform operations and agent management\n"
+                "- Maintain conversation context and refer to previous messages when relevant\n"
+                "- Execute VOLTTRON commands through available vctl functions\n"
+                "- Provide clear explanations of VOLTTRON concepts\n"
+                "\n\nAVAILABLE COMMANDS:\n"
+                "- vctl status: Show platform and agent status\n"
+                "- vctl install: Install agents from configuration files\n"
+                "- vctl start/stop: Start/stop agents by UUID or tag\n"
+                "- vctl remove: Remove stopped agents\n"
+                "- vctl uninstall: Complete uninstall (stop + remove) agents\n"
+                "- vctl list: Show installed agents\n"
+                "\n\nCONVERSATION CONTEXT:\n"
+                "You remember previous messages in this conversation. When users refer to "
+                "'the agent we just installed' or 'that error from before', use the conversation "
+                "history to understand the context. Build upon previous interactions and avoid "
+                "asking for information that was already provided."
+            )
+            
+            print(f"âœ“ AI service initialized with model: {self.model_name}")
+                
         except Exception as e:
             raise RuntimeError(f"Failed to initialize AI model '{self.model_name}': {str(e)}")
     
@@ -495,8 +545,8 @@ When someone asks for logs, recent activity, or "show recent logs", use EXECUTE_
 Remember: I'm not just a platform - I'm VOLTTRON with personality! Let's chat! ðŸŽ‰"""}
                 ]
                 
-                # Add recent conversation history (last 4 messages to maintain context)
-                recent_history = self.conversation_history[-4:]
+                # Add recent conversation history (last 8 messages to maintain better context)
+                recent_history = self.conversation_history[-8:]
                 messages.extend(recent_history)
                 
                 # Add current message
@@ -513,6 +563,9 @@ Remember: I'm not just a platform - I'm VOLTTRON with personality! Let's chat! ð
                 
                 # Add AI response to conversation history
                 self.conversation_history.append({"role": "assistant", "content": ai_response})
+                
+                # Save conversation history after each exchange
+                self._save_conversation_history()
                 
                 # Check if AI wants to execute a VOLTTRON command
                 if "EXECUTE_START_VOLTTRON" in ai_response:
@@ -599,12 +652,40 @@ Remember: I'm not just a platform - I'm VOLTTRON with personality! Let's chat! ð
                 else:
                     return ai_response
                 
-            elif self.agent:
-                # Use pydantic-ai agent for standard providers
-                result = await self.agent.run(message)
-                return result.output
             else:
-                return "Error: No AI service initialized"
+                # Use standard OpenAI API - Python 3.8 compatible approach
+                messages = [
+                    {"role": "system", "content": self.system_prompt}
+                ]
+                
+                # Add recent conversation history (last 8 messages to maintain better context)
+                recent_history = self.conversation_history[-8:]
+                messages.extend(recent_history)
+                
+                # Add current user message
+                messages.append({"role": "user", "content": message})
+                
+                # Use OpenAI client (version 2.x)
+                client = openai.OpenAI()
+                response = client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    max_tokens=1000,
+                    temperature=0.7
+                )
+                
+                ai_response = response.choices[0].message.content or "No response received"
+                
+                # Store any numbered options in the response for future reference
+                self._store_numbered_options(ai_response)
+                
+                # Add AI response to conversation history
+                self.conversation_history.append({"role": "assistant", "content": ai_response})
+                
+                # Save conversation history after each exchange
+                self._save_conversation_history()
+                
+                return ai_response
         except Exception as e:
             # Provide a user-friendly error message
             error_msg = str(e)

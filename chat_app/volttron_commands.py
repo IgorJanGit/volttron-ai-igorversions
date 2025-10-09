@@ -172,9 +172,9 @@ Environment is properly configured!
 def kill_existing_volttron_processes():
     """Kill any existing VOLTTRON processes to prevent conflicts."""
     try:
-        # Find all VOLTTRON processes
+        # Find all VOLTTRON processes (be specific to avoid catching unrelated processes)
         result = subprocess.run(
-            ["pgrep", "-f", "volttron"],
+            ["pgrep", "-f", "bin/volttron"],
             capture_output=True, text=True, timeout=10
         )
         
@@ -598,7 +598,18 @@ def check_volttron_status(brief=True):
         if not vctl_cmd:
             return check_volttron_installation()
         
-        # Set environment variables
+        # First, check if VOLTTRON processes are actually running using the same method as start_volttron
+        # Be more specific to avoid catching our own python subprocess
+        process_check = subprocess.run(
+            ["pgrep", "-f", "bin/volttron"],
+            capture_output=True, text=True, timeout=10
+        )
+        
+        # If no VOLTTRON processes are running, it's definitely not running
+        if process_check.returncode != 0 or not process_check.stdout.strip():
+            return "❌ VOLTTRON platform is not running."
+        
+        # VOLTTRON processes are running, now check with vctl status for detailed info
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
@@ -614,14 +625,16 @@ def check_volttron_status(brief=True):
         status_output = result.stdout or result.stderr or "No status output"
         
         if brief:
-            # Just show platform status briefly
+            # VOLTTRON is running (we confirmed with pgrep), now check agent status
             if result.returncode == 0:
                 if status_output.strip() and "No installed Agents found" not in status_output:
                     return f"✅ VOLTTRON platform is running with agents active."
                 else:
                     return f"🟡 VOLTTRON platform is running but no agents are installed."
             else:
-                return f"❌ VOLTTRON platform is not running."
+                # Processes exist but vctl can't connect - could be starting up
+                pids = process_check.stdout.strip().split('\n')
+                return f"🟡 VOLTTRON platform is running (PID {', '.join(pids)}) but may still be initializing."
         else:
             # Show detailed status with logs
             log_entries = read_volttron_log(5)  # Last 5 lines
