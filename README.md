@@ -45,29 +45,54 @@ cp .env.example .env
 
 #### Method 1: Using command line arguments
 ```bash
-# With OpenAI GPT-3.5 Turbo
+# With OpenAI GPT-3.5 Turbo (requires OPENAI_API_KEY)
 python -m chat_app --model openai:gpt-3.5-turbo
 
-# With OpenAI GPT-4
+# With OpenAI GPT-4 (requires OPENAI_API_KEY)
 python -m chat_app --model openai:gpt-4
 
-# With Anthropic Claude
-python -m chat_app --model anthropic:claude-3-haiku-20240307
+# With Ollama (local LLM)
+python -m chat_app --model ollama:llama3.1:8b
 
-# With Groq Mixtral
+# With Ollama using remote Windows machine
+OLLAMA_BASE_URL="http://192.168.1.125:11434/v1" python -m chat_app --model ollama:llama3.1:8b
+
+# With other Ollama models
+python -m chat_app --model ollama:gpt-oss:20b
+python -m chat_app --model ollama:qwen2.5-coder:32b
+
+# With Anthropic Claude (requires ANTHROPIC_API_KEY)
+python -m chat_app --model anthropic:claude-3-haiku-20240307
+python -m chat_app --model anthropic:claude-3-sonnet-20240229
+
+# With Groq Mixtral (requires GROQ_API_KEY)
 python -m chat_app --model groq:mixtral-8x7b-32768
+python -m chat_app --model groq:llama2-70b-4096
 
 # Custom host and port
-python -m chat_app --model openai:gpt-3.5-turbo --host 0.0.0.0 --port 3000
+python -m chat_app --model ollama:llama3.1:8b --host 0.0.0.0 --port 3000
 
 # Development mode with auto-reload
-python -m chat_app --model openai:gpt-3.5-turbo --reload
+python -m chat_app --model ollama:llama3.1:8b --reload
 ```
 
 #### Method 2: Using environment variables
 Set the model in your `.env` file:
 ```bash
-AI_MODEL=openai:gpt-3.5-turbo
+# For local Ollama
+AI_MODEL=ollama:llama3.1:8b
+HOST=127.0.0.1
+PORT=8000
+
+# For remote Ollama (Windows machine)
+AI_MODEL=ollama:llama3.1:8b
+OLLAMA_BASE_URL=http://192.168.1.125:11434/v1
+HOST=127.0.0.1
+PORT=8000
+
+# For OpenAI models
+AI_MODEL=openai:gpt-4
+OPENAI_API_KEY=your_openai_api_key_here
 HOST=127.0.0.1
 PORT=8000
 ```
@@ -89,10 +114,11 @@ python -m chat_app
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `AI_MODEL` | The AI model to use | `openai:gpt-3.5-turbo` |
+| `AI_MODEL` | The AI model to use | `openai:gpt-3.5-turbo`, `ollama:llama3.1:8b` |
 | `OPENAI_API_KEY` | OpenAI API key | `sk-...` |
 | `ANTHROPIC_API_KEY` | Anthropic API key | `sk-ant-...` |
 | `GROQ_API_KEY` | Groq API key | `gsk_...` |
+| `OLLAMA_BASE_URL` | Ollama API base URL | `http://localhost:11434/v1`, `http://192.168.1.125:11434/v1` |
 | `HOST` | Server host | `127.0.0.1` |
 | `PORT` | Server port | `8000` |
 
@@ -102,6 +128,17 @@ python -m chat_app
 - `openai:gpt-3.5-turbo`
 - `openai:gpt-4`
 - `openai:gpt-4-turbo`
+
+#### Ollama (local)
+- `ollama:llama3.1:8b`
+- `ollama:llama2`
+- `ollama:mistral`
+- `ollama:phi3`
+- `ollama:gpt-oss:20b`
+- `ollama:qwen2.5-coder:32b`
+- `ollama:qwen2.5-coder:14b`
+- `ollama:phi4-reasoning:plus`
+- `ollama:phi4:latest`
 
 #### Anthropic
 - `anthropic:claude-3-haiku-20240307`

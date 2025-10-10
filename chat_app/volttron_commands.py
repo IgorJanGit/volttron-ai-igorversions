@@ -9,7 +9,7 @@ def get_volttron_env_path():
         return venv_path
     
     # Fallback to common VOLTTRON env location
-    return "/home/riley/VOLTTRON/AI/env" # TODO remove hardcode
+    return "/home/riley/WORK/AI/volttron-ai/env" # TODO remove hardcode
 
 def get_volttron_home():
     """Get the VOLTTRON_HOME directory."""
@@ -19,7 +19,7 @@ def get_volttron_home():
         return volttron_home
     
     # Fallback to detected location
-    return "/home/riley/VOLTTRON/AI/volttron_home_new" # TODO remove hardcode
+    return "/home/riley/WORK/AI/volttron-ai/volttron_home_new" # TODO remove hardcode
 
 def start_volttron():
     """Start volttron in the background using the correct virtual environment."""
@@ -36,11 +36,14 @@ def start_volttron():
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        # Start volttron in the background
+        # Start volttron in the background with output redirected to /dev/null
+        # Using the exact command that works: volttron -vv -l volttron.log &>/dev/null &
         process = subprocess.Popen(
             [volttron_cmd, "-vv", "-l", "volttron.log"], 
             env=env,
-            cwd=os.path.dirname(volttron_home)  # Run from parent directory
+            cwd=volttron_home,  # Run from VOLTTRON_HOME directory
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
         return f"VOLTTRON started with PID {process.pid} (VOLTTRON_HOME: {volttron_home})"
     except Exception as e:
@@ -61,19 +64,23 @@ def stop_volttron():
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        # Stop volttron platform
+        # Stop volttron platform using the exact command that works: vctl shutdown
         result = subprocess.run(
-            [vctl_cmd, "shutdown", "--platform"], 
+            [vctl_cmd, "shutdown"], 
             capture_output=True, 
             text=True,
             env=env,
-            cwd=os.path.dirname(volttron_home)
+            cwd=volttron_home,
+            timeout=30
         )
         
         if result.returncode == 0:
             return "VOLTTRON stopped successfully"
         else:
-            return f"VOLTTRON stop result: {result.stdout or result.stderr}"
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            return f"VOLTTRON stop failed: {error_msg}"
+    except subprocess.TimeoutExpired:
+        return "VOLTTRON stop command timed out after 30 seconds"
     except Exception as e:
         return f"Error stopping VOLTTRON: {str(e)}"
 
@@ -82,27 +89,57 @@ def check_volttron_status():
     try:
         venv_path = get_volttron_env_path()
         volttron_home = get_volttron_home()
-        vctl_cmd = os.path.join(venv_path, "bin", "vctl")
         
         # Set environment variables
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        # Get status
-        result = subprocess.run(
-            [vctl_cmd, "status"], 
-            capture_output=True, 
-            text=True,
-            env=env,
-            cwd=os.path.dirname(volttron_home)
-        )
+        # Check if VOLTTRON processes are running
+        try:
+            ps_result = subprocess.run(
+                ["pgrep", "-f", "volttron"], 
+                capture_output=True, 
+                text=True,
+                timeout=5
+            )
+            
+            if ps_result.returncode == 0 and ps_result.stdout.strip():
+                pids = ps_result.stdout.strip().split('\n')
+                status_msg = f"VOLTTRON is running (PIDs: {', '.join(pids)})"
+            else:
+                status_msg = "VOLTTRON is not running"
+        except Exception:
+            status_msg = "Could not determine VOLTTRON status"
         
-        status_output = result.stdout or result.stderr or "No status output"
+        # Try to get detailed status with vctl if available
+        vctl_cmd = os.path.join(venv_path, "bin", "vctl")
+        if os.path.exists(vctl_cmd):
+            try:
+                result = subprocess.run(
+                    [vctl_cmd, "status"], 
+                    capture_output=True, 
+                    text=True,
+                    env=env,
+                    cwd=volttron_home,
+                    timeout=10
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    status_msg += f"\n\nDetailed status:\n{result.stdout}"
+                else:
+                    # Just return the basic status
+                    pass
+            except Exception:
+                # vctl failed, just return basic status
+                pass
         
-        # Also read recent log entries
-        log_entries = read_volttron_log(5)  # Last 5 lines
+        # Add recent log info
+        log_info = read_volttron_log(5)
+        if log_info and "No log file found" not in log_info:
+            status_msg += f"\n\nRecent logs:\n{log_info}"
         
-        return f"VOLTTRON Status:\n{status_output}\n\nRecent Log Entries:\n{log_entries}"
+        return status_msg
+        
     except Exception as e:
         return f"Error checking VOLTTRON status: {str(e)}"
 
