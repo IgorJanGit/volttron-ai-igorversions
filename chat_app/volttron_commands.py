@@ -143,6 +143,47 @@ def check_volttron_status():
     except Exception as e:
         return f"Error checking VOLTTRON status: {str(e)}"
 
+def get_vctl_status():
+    """Get VOLTTRON platform status using vctl status command."""
+    try:
+        venv_path = get_volttron_env_path()
+        volttron_home = get_volttron_home()
+        vctl_cmd = os.path.join(venv_path, "bin", "vctl")
+        
+        # Check if the vctl command exists
+        if not os.path.exists(vctl_cmd):
+            return f"Error: vctl command not found at {vctl_cmd}"
+        
+        # Set environment variables for VOLTTRON
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # Get platform status using vctl status
+        result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=15
+        )
+        
+        if result.returncode == 0:
+            if result.stdout.strip():
+                return f"VOLTTRON Platform Status:\n{result.stdout.strip()}"
+            else:
+                return "VOLTTRON platform is running but no agents are installed or running"
+        else:
+            error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+            if "not running" in error_msg.lower() or "connection" in error_msg.lower():
+                return "VOLTTRON platform is not running"
+            return f"vctl status failed: {error_msg}"
+            
+    except subprocess.TimeoutExpired:
+        return "vctl status command timed out after 15 seconds"
+    except Exception as e:
+        return f"Error getting VOLTTRON status: {str(e)}"
+
 def read_volttron_log(num_lines=10):
     """Read the last N lines from the VOLTTRON log file."""
     try:

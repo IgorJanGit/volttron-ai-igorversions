@@ -2,7 +2,7 @@ from pydantic_ai import Agent
 from typing import Optional
 import os
 import openai
-from .volttron_commands import start_volttron, stop_volttron, check_volttron_status, read_volttron_log
+from .volttron_commands import start_volttron, stop_volttron, check_volttron_status, read_volttron_log, get_vctl_status
 
 class AIService:
     """Service for handling AI model interactions using Pydantic-AI."""
@@ -26,6 +26,8 @@ class AIService:
                     base_url=ai_webapp_url
                 )
                 self.custom_model = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
+                # Create agent for custom client with tools
+                self.agent = self._create_agent_with_tools()
             # Use Ollama if model_name starts with 'ollama:'
             elif self.model_name.startswith("ollama:"):
                 from pydantic_ai.models.openai import OpenAIChatModel
@@ -43,43 +45,112 @@ class AIService:
                     ),
                     system_prompt=self._get_volttron_system_prompt()
                 )
+                self._register_volttron_tools()
             else:
                 # Use default provider logic (OpenAI, Anthropic, etc.) with pydantic-ai
                 self.agent = Agent(
                     self.model_name,
                     system_prompt=self._get_volttron_system_prompt()
                 )
+                self._register_volttron_tools()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize AI model '{self.model_name}': {str(e)}")
     
+    def _create_agent_with_tools(self):
+        """Create an agent for custom client usage with tools."""
+        agent = Agent(
+            self.model_name,
+            system_prompt=self._get_volttron_system_prompt()
+        )
+        self._register_volttron_tools_on_agent(agent)
+        return agent
+    
+    def _register_volttron_tools(self):
+        """Register VOLTTRON control tools with the agent."""
+        @self.agent.tool_plain
+        def start_volttron_tool() -> str:
+            """Start the VOLTTRON platform."""
+            return start_volttron()
+        
+        @self.agent.tool_plain
+        def stop_volttron_tool() -> str:
+            """Stop the VOLTTRON platform."""
+            return stop_volttron()
+        
+        @self.agent.tool_plain
+        def check_volttron_status_tool() -> str:
+            """Check VOLTTRON platform status and show recent logs."""
+            return check_volttron_status()
+        
+        @self.agent.tool_plain
+        def get_vctl_status_tool() -> str:
+            """Get VOLTTRON platform status using vctl status command."""
+            return get_vctl_status()
+        
+        @self.agent.tool_plain
+        def read_volttron_log_tool(num_lines: int = 10) -> str:
+            """Read recent VOLTTRON log entries.
+            
+            Args:
+                num_lines: Number of recent log lines to read (default: 10)
+            """
+            return read_volttron_log(num_lines)
+    
+    def _register_volttron_tools_on_agent(self, agent):
+        """Register VOLTTRON control tools on a specific agent."""
+        @agent.tool_plain
+        def start_volttron_tool() -> str:
+            """Start the VOLTTRON platform."""
+            return start_volttron()
+        
+        @agent.tool_plain
+        def stop_volttron_tool() -> str:
+            """Stop the VOLTTRON platform."""
+            return stop_volttron()
+        
+        @agent.tool_plain
+        def check_volttron_status_tool() -> str:
+            """Check VOLTTRON platform status and show recent logs."""
+            return check_volttron_status()
+        
+        @agent.tool_plain
+        def get_vctl_status_tool() -> str:
+            """Get VOLTTRON platform status using vctl status command."""
+            return get_vctl_status()
+        
+        @agent.tool_plain
+        def read_volttron_log_tool(num_lines: int = 10) -> str:
+            """Read recent VOLTTRON log entries.
+            
+            Args:
+                num_lines: Number of recent log lines to read (default: 10)
+            """
+            return read_volttron_log(num_lines)
+    
     def _get_volttron_system_prompt(self) -> str:
         """Get the unified VOLTTRON system prompt for all AI models."""
-        return """You are a helpful AI assistant that can control VOLTTRON platform. 
+        return """You are a helpful AI assistant that can control the VOLTTRON platform.
 
-You have access to these functions:
-- start_volttron(): Starts the VOLTTRON platform
-- stop_volttron(): Stops the VOLTTRON platform  
-- check_volttron_status(): Checks VOLTTRON status and shows recent logs
-- read_volttron_log(): Shows recent VOLTTRON log entries
+You have access to these tools:
+- start_volttron_tool(): Start the VOLTTRON platform
+- stop_volttron_tool(): Stop the VOLTTRON platform  
+- check_volttron_status_tool(): Check VOLTTRON platform status and show recent logs
+- get_vctl_status_tool(): Get VOLTTRON platform status using vctl status command
+- read_volttron_log_tool(num_lines): Read recent VOLTTRON log entries
 
-When users ask to start, run, launch, activate, or turn on VOLTTRON (or "the platform"), call start_volttron().
-When users ask to stop, shutdown, halt, kill, or turn off VOLTTRON, call stop_volttron().
-When users ask about status, want to check VOLTTRON, or ask "how is VOLTTRON doing", call check_volttron_status().
-When users ask about logs, want to see what happened, or ask for output, call read_volttron_log().
+When users ask to start, run, launch, activate, or turn on VOLTTRON (or "the platform"), use start_volttron_tool().
+When users ask to stop, shutdown, halt, kill, or turn off VOLTTRON, use stop_volttron_tool().
+When users ask about status, want to check VOLTTRON, or ask "how is VOLTTRON doing", use check_volttron_status_tool().
+When users specifically ask for "vctl status" or want the official platform status, use get_vctl_status_tool().
+When users ask about logs, want to see what happened, or ask for output, use read_volttron_log_tool().
 
-If you determine the user wants a VOLTTRON command, respond with exactly one of:
-- EXECUTE_START_VOLTTRON
-- EXECUTE_STOP_VOLTTRON  
-- EXECUTE_STATUS_VOLTTRON
-- EXECUTE_LOG_VOLTTRON
-
-Otherwise, provide helpful conversational responses."""
+Use the appropriate tools to perform VOLTTRON operations when requested. For general conversation, respond normally without using tools."""
     
     async def generate_response(self, message: str) -> str:
         """Generate a response to the user's message."""
         try:
-            if self.custom_client:
-                # Use custom OpenAI-compatible API with VOLTTRON control capabilities
+            if self.custom_client and not self.agent:
+                # Legacy custom client without tools (fallback)
                 response = self.custom_client.chat.completions.create(
                     model=self.custom_model,
                     messages=[
@@ -87,44 +158,11 @@ Otherwise, provide helpful conversational responses."""
                         {"role": "user", "content": message}
                     ]
                 )
-                ai_response = response.choices[0].message.content or "No response received"
-                
-                # Check if AI wants to execute a VOLTTRON command
-                if "EXECUTE_START_VOLTTRON" in ai_response:
-                    result = start_volttron()
-                    return f"✅ {result}"
-                elif "EXECUTE_STOP_VOLTTRON" in ai_response:
-                    result = stop_volttron()
-                    return f"✅ {result}"
-                elif "EXECUTE_STATUS_VOLTTRON" in ai_response:
-                    result = check_volttron_status()
-                    return f"📊 {result}"
-                elif "EXECUTE_LOG_VOLTTRON" in ai_response:
-                    result = read_volttron_log(10)
-                    return f"📝 Recent VOLTTRON Log:\n{result}"
-                else:
-                    return ai_response
-                
+                return response.choices[0].message.content or "No response received"
             elif self.agent:
-                # Use pydantic-ai agent for standard providers
+                # Use pydantic-ai agent with tools for all models
                 result = await self.agent.run(message)
-                ai_response = result.output
-                
-                # Check if AI wants to execute a VOLTTRON command
-                if "EXECUTE_START_VOLTTRON" in ai_response:
-                    result = start_volttron()
-                    return f"✅ {result}"
-                elif "EXECUTE_STOP_VOLTTRON" in ai_response:
-                    result = stop_volttron()
-                    return f"✅ {result}"
-                elif "EXECUTE_STATUS_VOLTTRON" in ai_response:
-                    result = check_volttron_status()
-                    return f"📊 {result}"
-                elif "EXECUTE_LOG_VOLTTRON" in ai_response:
-                    result = read_volttron_log(10)
-                    return f"📝 Recent VOLTTRON Log:\n{result}"
-                else:
-                    return ai_response
+                return result.output
             else:
                 return "Error: No AI service initialized"
         except Exception as e:
