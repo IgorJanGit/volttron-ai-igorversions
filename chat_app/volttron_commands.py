@@ -3,6 +3,79 @@ import os
 import shutil
 from pathlib import Path
 
+# Available VOLTTRON agents and packages
+AVAILABLE_AGENTS = {
+    # Core Agents
+    'listener': {
+        'package': 'volttron-listener',
+        'vip_identity': 'listener',
+        'description': 'Simple listener agent that monitors all platform messages',
+        'category': 'Core'
+    },
+    'platform-driver': {
+        'package': 'volttron-platform-driver', 
+        'vip_identity': 'platform.driver',
+        'description': 'Platform driver for device communication',
+        'category': 'Driver'
+    },
+    
+    # Historians
+    'sqlite-historian': {
+        'package': 'volttron-sqlite-historian',
+        'vip_identity': 'sqlite_historian',
+        'description': 'SQLite database historian for storing data',
+        'category': 'Historian'
+    },
+    'postgresql-historian': {
+        'package': 'volttron-postgresql-historian',
+        'vip_identity': 'postgresql_historian', 
+        'description': 'PostgreSQL database historian for storing data',
+        'category': 'Historian'
+    },
+    
+    # Driver Libraries (for development)
+    'fake-driver': {
+        'package': 'volttron-lib-fake-driver',
+        'vip_identity': 'fake_driver',
+        'description': 'Fake driver library for testing and development',
+        'category': 'Driver Library'
+    },
+    'bacnet-driver': {
+        'package': 'volttron-lib-bacnet-driver',
+        'vip_identity': 'bacnet_driver',
+        'description': 'BACnet driver library for building automation',
+        'category': 'Driver Library'
+    },
+    
+    # Protocol Libraries
+    'protocol-proxy': {
+        'package': 'lib-protocol-proxy',
+        'vip_identity': 'protocol_proxy',
+        'description': 'Protocol proxy library for device communication',
+        'category': 'Protocol'
+    },
+    'bacnet-proxy': {
+        'package': 'lib-protocol-proxy-bacnet',
+        'vip_identity': 'bacnet_proxy',
+        'description': 'BACnet protocol proxy for building automation',
+        'category': 'Protocol'
+    },
+    
+    # Tools
+    'platform-lookup': {
+        'package': 'platform-lookup',
+        'vip_identity': 'platform_lookup',
+        'description': 'Platform lookup service for agent discovery',
+        'category': 'Tool'
+    },
+    'bacnet-scan': {
+        'package': 'bacnet-scan-tool',
+        'vip_identity': 'bacnet_scanner',
+        'description': 'BACnet network scanning tool',
+        'category': 'Tool'
+    }
+}
+
 def format_volttron_warnings(stderr_output):
     """Format VOLTTRON warnings and messages for user-friendly display."""
     if not stderr_output:
@@ -115,26 +188,18 @@ def get_volttron_env_path():
 
 def get_volttron_home():
     """Get the VOLTTRON_HOME directory."""
-    # Check if VOLTTRON_HOME is set in environment
-    volttron_home = os.getenv("VOLTTRON_HOME")
-    if volttron_home:
-        return volttron_home
+    # Always prefer the project-specific VOLTTRON_HOME for consistency
+    preferred_home = "/home/igorj/volttron/volttron_home"
     
-    # Try common locations
-    possible_homes = [
-        os.path.expanduser("~/.volttron"),
-        os.path.expanduser("~/volttron_home"),
-        os.path.expanduser("~/VOLTTRON/volttron_home"),
-        os.path.expanduser("~/VOLTTRON/AI/volttron_home_new"),
-        "/tmp/volttron_home",
-        "./volttron_home"
-    ]
+    # Check if VOLTTRON_HOME is explicitly set in environment first
+    env_volttron_home = os.getenv("VOLTTRON_HOME")
+    if env_volttron_home and env_volttron_home != os.path.expanduser("~/.volttron"):
+        # Use explicit environment setting unless it's the default ~/.volttron
+        return env_volttron_home
     
-    for home in possible_homes:
-        if os.path.isdir(home):
-            return home
-    
-    # Default fallback
+    # Create and use our preferred directory
+    os.makedirs(preferred_home, exist_ok=True)
+    return preferred_home
     return os.path.expanduser("~/.volttron")
 
 def check_volttron_environment():
@@ -762,7 +827,30 @@ def vctl_uninstall_agent(agent_uuid_or_tag):
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
+        # First check if VOLTTRON is running and if the agent exists
+        status_result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=10
+        )
+        
+        if status_result.returncode != 0:
+            return "❌ VOLTTRON is not running. Cannot uninstall agents when VOLTTRON is stopped.\n\n💡 **Try:** Start VOLTTRON first with 'start volttron'"
+        
+        # Check if the agent actually exists
+        agent_found = False
+        if status_result.stdout:
+            if agent_uuid_or_tag in status_result.stdout:
+                agent_found = True
+        
+        if not agent_found:
+            return f"❌ Agent '{agent_uuid_or_tag}' not found.\n\n**Current agents:**\n{status_result.stdout}\n\n💡 **Tip:** Use the exact UUID or tag shown above."
+        
         messages = []
+        success = True
         
         # Step 1: Stop the agent first (required before removal)
         messages.append(f"🛑 Stopping agent '{agent_uuid_or_tag}'...")
@@ -784,6 +872,7 @@ def vctl_uninstall_agent(agent_uuid_or_tag):
                 messages.append(f"ℹ️ Agent '{agent_uuid_or_tag}' was already stopped.")
             else:
                 messages.append(f"⚠️ Warning during stop: {stop_error}")
+                # Don't fail here, might still be able to remove
         
         # Step 2: Remove the agent (this deletes the package from VOLTTRON_HOME)
         messages.append(f"🗑️ Removing agent '{agent_uuid_or_tag}' from platform...")
@@ -799,23 +888,541 @@ def vctl_uninstall_agent(agent_uuid_or_tag):
         if remove_result.returncode == 0:
             messages.append(f"✅ Agent '{agent_uuid_or_tag}' completely removed from platform!")
             messages.append("📁 Agent package deleted from $VOLTTRON_HOME directory.")
-            return "\n".join(messages)
         else:
-            remove_error = remove_result.stderr or remove_result.stdout or "Unknown error"
-            messages.append(f"❌ Error removing agent '{agent_uuid_or_tag}': {remove_error}")
+            # First removal attempt failed, try to find the actual UUID from status
+            messages.append(f"⚠️ Initial removal failed, searching for UUID...")
             
-            # Provide helpful hints based on error
-            if "not found" in remove_error.lower():
-                messages.append("💡 Hint: Check if the agent UUID or tag is correct using 'vctl status'")
-            elif "permission" in remove_error.lower():
-                messages.append("💡 Hint: Make sure VOLTTRON has proper permissions in $VOLTTRON_HOME")
+            # Parse the status output to find the UUID for this agent
+            uuid_found = None
+            if status_result.stdout:
+                lines = status_result.stdout.strip().split('\n')
+                for line in lines:
+                    if agent_uuid_or_tag in line:
+                        # Extract the UUID (first column)
+                        parts = line.split()
+                        if parts:
+                            uuid_found = parts[0]
+                            break
             
-            return "\n".join(messages)
+            if uuid_found and uuid_found != agent_uuid_or_tag:
+                # Try removal with the actual UUID
+                messages.append(f"🔍 Found UUID '{uuid_found}', trying removal with UUID...")
+                remove_result2 = subprocess.run(
+                    [vctl_cmd, "remove", uuid_found], 
+                    capture_output=True, 
+                    text=True,
+                    env=env,
+                    cwd=volttron_home,
+                    timeout=30
+                )
+                
+                if remove_result2.returncode == 0:
+                    messages.append(f"✅ Agent '{agent_uuid_or_tag}' (UUID: {uuid_found}) completely removed from platform!")
+                    messages.append("📁 Agent package deleted from $VOLTTRON_HOME directory.")
+                else:
+                    success = False
+                    remove_error = remove_result2.stderr or remove_result2.stdout or "Unknown error"
+                    messages.append(f"❌ Error removing agent with UUID '{uuid_found}':")
+                    messages.append(f"**Command output:** {remove_error}")
+            else:
+                success = False
+                remove_error = remove_result.stderr or remove_result.stdout or "Unknown error"
+                messages.append(f"❌ Error removing agent '{agent_uuid_or_tag}':")
+                messages.append(f"**Command output:** {remove_error}")
+                
+                # Provide helpful hints based on error
+                if "not found" in remove_error.lower():
+                    messages.append("💡 **Hint:** Check if the agent UUID or tag is correct using 'vctl status'")
+                elif "permission" in remove_error.lower():
+                    messages.append("💡 **Hint:** Make sure VOLTTRON has proper permissions in $VOLTTRON_HOME")
+                elif "still running" in remove_error.lower():
+                    messages.append("💡 **Hint:** The agent might still be running. Try stopping it first.")
+        
+        # Step 3: Comprehensive verification of removal
+        messages.append("\n🔍 **Performing comprehensive uninstall verification...**")
+        
+        # Verification 1: Check agent status
+        verify_result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=10
+        )
+        
+        verification_passed = True
+        verification_details = []
+        
+        if verify_result.returncode == 0:
+            # Check if agent UUID/tag still appears in status
+            if agent_uuid_or_tag not in verify_result.stdout:
+                verification_details.append(f"✅ Agent '{agent_uuid_or_tag}' not found in vctl status")
+            else:
+                verification_details.append(f"❌ Agent '{agent_uuid_or_tag}' still appears in vctl status")
+                verification_passed = False
+                
+            # Also check for UUID if we found one earlier
+            if 'uuid_found' in locals() and uuid_found and uuid_found != agent_uuid_or_tag:
+                if uuid_found not in verify_result.stdout:
+                    verification_details.append(f"✅ Agent UUID '{uuid_found}' not found in status")
+                else:
+                    verification_details.append(f"❌ Agent UUID '{uuid_found}' still appears in status")
+                    verification_passed = False
+        else:
+            verification_details.append("⚠️ Could not verify removal via vctl status")
+            verification_passed = False
+        
+        # Verification 2: Check VOLTTRON_HOME for leftover agent directories
+        try:
+            agents_dir = os.path.join(volttron_home, "agents")
+            if os.path.exists(agents_dir):
+                leftover_dirs = []
+                for item in os.listdir(agents_dir):
+                    item_path = os.path.join(agents_dir, item)
+                    if os.path.isdir(item_path):
+                        # Check if directory name contains our agent identifier
+                        if (agent_uuid_or_tag in item.lower() or 
+                            ('uuid_found' in locals() and uuid_found and uuid_found in item)):
+                            leftover_dirs.append(item)
+                
+                if leftover_dirs:
+                    verification_details.append(f"⚠️ Found potential leftover directories: {leftover_dirs}")
+                    verification_passed = False
+                else:
+                    verification_details.append("✅ No leftover agent directories found")
+            else:
+                verification_details.append("ℹ️ Agents directory not found (normal if no agents installed)")
+        except Exception as e:
+            verification_details.append(f"⚠️ Could not check agent directories: {str(e)}")
+        
+        # Verification 3: Try to start the agent (should fail if properly removed)
+        try:
+            start_test = subprocess.run(
+                [vctl_cmd, "start", agent_uuid_or_tag], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            # Check both return code and output content (vctl can return 0 even on errors)
+            error_msg = (start_test.stderr + " " + start_test.stdout).lower()
+            if ("not found" in error_msg or "no agent" in error_msg or 
+                "agent not found" in error_msg or "unknown agent" in error_msg):
+                verification_details.append("✅ Agent properly removed - cannot be started")
+            elif start_test.returncode != 0:
+                verification_details.append("✅ Agent start failed as expected")
+            else:
+                # Check if stderr has error even with return code 0
+                if "error" in error_msg and ("not found" in error_msg or "no agent" in error_msg):
+                    verification_details.append("✅ Agent properly removed - cannot be started")
+                else:
+                    verification_details.append("❌ Agent can still be started - removal incomplete")
+                    verification_passed = False
+        except Exception as e:
+            verification_details.append(f"⚠️ Could not test agent start capability: {str(e)}")
+        
+        # Add verification details to messages
+        for detail in verification_details:
+            messages.append(detail)
+        
+        # Final verification result
+        if verification_passed:
+            messages.append(f"\n🎉 **UNINSTALL SUCCESSFUL:** Agent '{agent_uuid_or_tag}' completely removed!")
+            messages.append("✅ All verification checks passed")
+            success = True
+        else:
+            messages.append(f"\n⚠️ **UNINSTALL INCOMPLETE:** Some verification checks failed")
+            messages.append("💡 **Recommendation:** Check VOLTTRON logs or restart VOLTTRON platform")
+            success = False
+        
+        return "\n".join(messages)
             
     except subprocess.TimeoutExpired:
         return f"⏰ Timeout: Agent '{agent_uuid_or_tag}' uninstall operation took too long"
     except Exception as e:
         return f"❌ Error uninstalling agent '{agent_uuid_or_tag}': {str(e)}"
+
+def verify_agent_uninstalled(agent_identifier):
+    """Comprehensive verification to ensure an agent has been completely uninstalled.
+    
+    Args:
+        agent_identifier: Agent UUID, tag, or name to verify removal of
+        
+    Returns:
+        str: Detailed verification report
+    """
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return "❌ VOLTTRON not properly installed - cannot verify uninstall"
+        
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        messages = [f"🔍 **Verifying complete removal of agent '{agent_identifier}'**\n"]
+        verification_results = []
+        all_checks_passed = True
+        
+        # Check 1: Agent not in vctl status
+        try:
+            status_result = subprocess.run(
+                [vctl_cmd, "status"], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            if status_result.returncode == 0:
+                if agent_identifier not in status_result.stdout:
+                    verification_results.append("✅ Agent not found in vctl status")
+                else:
+                    verification_results.append("❌ Agent still appears in vctl status")
+                    all_checks_passed = False
+            elif status_result.returncode == 10:
+                # VOLTTRON not running - this is actually good for uninstall verification
+                verification_results.append("ℹ️ VOLTTRON not running - agent cannot be running")
+            else:
+                verification_results.append("⚠️ Could not check vctl status")
+                all_checks_passed = False
+        except Exception as e:
+            verification_results.append(f"❌ Error checking status: {str(e)}")
+            all_checks_passed = False
+        
+        # Check 2: No leftover directories in VOLTTRON_HOME
+        try:
+            agents_dir = os.path.join(volttron_home, "agents")
+            leftover_found = False
+            
+            if os.path.exists(agents_dir):
+                for item in os.listdir(agents_dir):
+                    item_path = os.path.join(agents_dir, item)
+                    if os.path.isdir(item_path):
+                        if agent_identifier.lower() in item.lower():
+                            verification_results.append(f"❌ Found leftover directory: {item}")
+                            leftover_found = True
+                            all_checks_passed = False
+                
+                if not leftover_found:
+                    verification_results.append("✅ No leftover directories found")
+            else:
+                verification_results.append("ℹ️ Agents directory not found")
+        except Exception as e:
+            verification_results.append(f"⚠️ Could not check directories: {str(e)}")
+        
+        # Check 3: Agent cannot be started
+        try:
+            start_result = subprocess.run(
+                [vctl_cmd, "start", agent_identifier], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            # Check both return code and output content
+            error_msg = (start_result.stderr + " " + start_result.stdout).lower()
+            if ("not found" in error_msg or "no agent" in error_msg or 
+                "agent not found" in error_msg or "unknown agent" in error_msg):
+                verification_results.append("✅ Agent cannot be started (properly removed)")
+            elif start_result.returncode != 0:
+                verification_results.append("✅ Agent start failed as expected")
+            else:
+                # Check if stderr has error even with return code 0
+                if "error" in error_msg and ("not found" in error_msg or "no agent" in error_msg):
+                    verification_results.append("✅ Agent cannot be started (properly removed)")
+                else:
+                    verification_results.append("❌ Agent can still be started (removal incomplete)")
+                    all_checks_passed = False
+        except Exception as e:
+            verification_results.append(f"⚠️ Could not test agent start: {str(e)}")
+        
+        # Check 4: Agent cannot be stopped (should fail if not installed)
+        try:
+            stop_result = subprocess.run(
+                [vctl_cmd, "stop", agent_identifier], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            # Check both return code and output content
+            error_msg = (stop_result.stderr + " " + stop_result.stdout).lower()
+            if ("not found" in error_msg or "no agent" in error_msg or 
+                "agent not found" in error_msg or "unknown agent" in error_msg):
+                verification_results.append("✅ Agent cannot be stopped (properly removed)")
+            elif stop_result.returncode != 0:
+                verification_results.append("✅ Agent stop failed as expected")
+            else:
+                # Check if stderr has error even with return code 0
+                if "error" in error_msg and ("not found" in error_msg or "no agent" in error_msg):
+                    verification_results.append("✅ Agent cannot be stopped (properly removed)")
+                else:
+                    verification_results.append("❌ Agent can still be stopped (may still exist)")
+                    all_checks_passed = False
+        except Exception as e:
+            verification_results.append(f"⚠️ Could not test agent stop: {str(e)}")
+        
+        # Check 5: No process running with agent name (more specific check)
+        try:
+            import psutil
+            agent_processes = []
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = ' '.join(proc.info['cmdline'] or [])
+                    # More specific check - look for actual agent processes, not just any mention
+                    if (agent_identifier.lower() in cmdline.lower() and 
+                        'volttron' in cmdline.lower() and 
+                        proc.info['name'] not in ['python3', 'python', 'bash', 'sh']):
+                        agent_processes.append(f"PID {proc.info['pid']}: {proc.info['name']}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            if agent_processes:
+                verification_results.append(f"⚠️ Found processes that may be related: {agent_processes}")
+                all_checks_passed = False
+            else:
+                verification_results.append("✅ No related VOLTTRON processes running")
+        except ImportError:
+            verification_results.append("ℹ️ psutil not available - skipping process check")
+        except Exception as e:
+            verification_results.append(f"⚠️ Could not check processes: {str(e)}")
+        
+        # Compile results
+        messages.extend(verification_results)
+        
+        if all_checks_passed:
+            messages.append(f"\n🎉 **VERIFICATION PASSED:** Agent '{agent_identifier}' is completely uninstalled!")
+            messages.append("✅ All verification checks succeeded")
+        else:
+            messages.append(f"\n⚠️ **VERIFICATION FAILED:** Agent '{agent_identifier}' may not be completely removed")
+            messages.append("💡 **Recommendations:**")
+            messages.append("   • Restart VOLTTRON platform")
+            messages.append("   • Check VOLTTRON logs for errors")
+            messages.append("   • Manually clean VOLTTRON_HOME if needed")
+        
+        return "\n".join(messages)
+        
+    except Exception as e:
+        return f"❌ Error during verification: {str(e)}"
+
+def vctl_install_listener_agent():
+    """Install the VOLTTRON listener agent for monitoring platform messages."""
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return check_volttron_installation()
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # First, check if volttron-listener package is installed
+        pip_cmd = find_pip_command()
+        if pip_cmd:
+            check_result = subprocess.run([
+                pip_cmd, "show", "volttron-listener"
+            ], capture_output=True, text=True, timeout=10, env=env)
+            
+            if check_result.returncode != 0:
+                # Install the volttron-listener package
+                install_result = subprocess.run([
+                    pip_cmd, "install", "volttron-listener"
+                ], capture_output=True, text=True, timeout=60, env=env)
+                
+                if install_result.returncode != 0:
+                    return f"❌ Failed to install volttron-listener package: {install_result.stderr}"
+        
+        # Install the listener agent
+        result = subprocess.run([
+            vctl_cmd, "install", "volttron-listener",
+            "--vip-identity", "listener",
+            "--start"
+        ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
+        
+        if result.returncode == 0:
+            return """
+🎉 **Listener Agent Installed Successfully!**
+
+The VOLTTRON Listener Agent is now installed and running! It will monitor and display all messages flowing through the VOLTTRON platform.
+
+**📋 What the Listener does:**
+• Subscribes to all topics on the message bus
+• Displays real-time message activity
+• Perfect for debugging and monitoring
+
+**🔍 To see what it's listening to:**
+• Check the logs: `tail -f volttron.log`
+• Or ask: **"Show recent logs"**
+
+The listener is now actively monitoring your VOLTTRON platform! 👂
+"""
+        else:
+            return f"❌ Failed to install listener agent: {result.stderr or result.stdout}"
+            
+    except Exception as e:
+        return f"Error installing listener agent: {str(e)}"
+
+def vctl_install_agent(agent_name):
+    """Install any VOLTTRON agent by name."""
+    try:
+        # Normalize agent name
+        agent_name = agent_name.lower().replace('_', '-').replace(' ', '-')
+        
+        # Check if agent is available
+        if agent_name not in AVAILABLE_AGENTS:
+            available_agents = list_available_agents()
+            return f"""❌ **Agent '{agent_name}' not found**
+
+{available_agents}
+
+💡 **Tip**: Try asking "what agents can I install?" to see all options."""
+        
+        agent_info = AVAILABLE_AGENTS[agent_name]
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return check_volttron_installation()
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # Install the package first
+        pip_cmd = find_pip_command()
+        if pip_cmd:
+            print(f"📦 Installing package: {agent_info['package']}")
+            install_result = subprocess.run([
+                pip_cmd, "install", agent_info['package']
+            ], capture_output=True, text=True, timeout=120, env=env)
+            
+            if install_result.returncode != 0:
+                return f"""❌ **Failed to install {agent_info['package']} package**
+
+**Error:** {install_result.stderr or install_result.stdout}
+
+💡 **Try manually:** `pip install {agent_info['package']}`"""
+        
+        # Install the agent in VOLTTRON
+        install_args = [
+            vctl_cmd, "install", agent_info['package'],
+            "--vip-identity", agent_info['vip_identity']
+        ]
+        
+        # Auto-start for core agents
+        if agent_info['category'] in ['Core', 'Historian']:
+            install_args.append("--start")
+        
+        result = subprocess.run(
+            install_args,
+            capture_output=True, text=True, timeout=60, env=env, cwd=volttron_home
+        )
+        
+        if result.returncode == 0:
+            status_emoji = "🎉" if agent_info['category'] == 'Core' else "✅"
+            auto_start_msg = " and started" if "--start" in install_args else ""
+            
+            return f"""{status_emoji} **{agent_name.title()} Agent Installed Successfully!**
+
+**📋 Agent Details:**
+• **Name**: {agent_name}
+• **Package**: {agent_info['package']}
+• **Category**: {agent_info['category']}
+• **Description**: {agent_info['description']}
+• **VIP Identity**: {agent_info['vip_identity']}
+
+The agent has been installed{auto_start_msg}! 🚀
+
+**🔍 Next Steps:**
+• Check status: **"vctl status"**
+• View logs: **"show recent logs"**
+• List all agents: **"list agents"**
+"""
+        else:
+            return f"""❌ **Failed to install {agent_name} agent**
+
+**Error:** {result.stderr or result.stdout}
+
+💡 **Troubleshooting:**
+• Make sure VOLTTRON is running: **"start volttron"**
+• Check agent status: **"vctl status"**
+• Try: **"what agents can I install?"**"""
+            
+    except Exception as e:
+        return f"❌ Error installing {agent_name} agent: {str(e)}"
+
+def list_available_agents():
+    """List all available VOLTTRON agents that can be installed."""
+    categories = {}
+    
+    # Group agents by category
+    for agent_name, info in AVAILABLE_AGENTS.items():
+        category = info['category']
+        if category not in categories:
+            categories[category] = []
+        categories[category].append({
+            'name': agent_name,
+            'description': info['description'],
+            'package': info['package']
+        })
+    
+    output = "🤖 **Available VOLTTRON Agents:**\n\n"
+    
+    for category, agents in categories.items():
+        output += f"**{category} Agents:**\n"
+        for agent in agents:
+            output += f"• **{agent['name']}** - {agent['description']}\n"
+        output += "\n"
+    
+    output += """💡 **How to install:**
+• Say: **"install listener"** or **"install sqlite-historian"**
+• Or: **"install [agent-name]"** for any agent above
+
+🎯 **Recommended for beginners:**
+• **listener** - Great for monitoring platform activity
+• **platform-driver** - Essential for device communication
+• **sqlite-historian** - Perfect for storing sensor data"""
+    
+    return output
+
+def find_pip_command():
+    """Find pip command in the VOLTTRON environment."""
+    # Check the current virtual environment first
+    if 'VIRTUAL_ENV' in os.environ:
+        pip_path = os.path.join(os.environ['VIRTUAL_ENV'], 'bin', 'pip')
+        if os.path.exists(pip_path):
+            return pip_path
+    
+    # Check common VOLTTRON environment locations
+    common_pip_paths = [
+        "/home/igor/Work/Volttron_eclispe/env/bin/pip",
+        "/home/igorj/volttron/volttron-ai-igorversions/env/bin/pip",
+        "/usr/local/bin/pip",
+        "/usr/bin/pip"
+    ]
+    
+    for path in common_pip_paths:
+        if os.path.exists(path):
+            return path
+    
+    # Try to find pip in PATH
+    pip_cmd = shutil.which("pip")
+    if pip_cmd:
+        return pip_cmd
+    
+    return None
 
 def vctl_uninstall_all_listeners():
     """Uninstall all listener agents to clean up duplicates."""
