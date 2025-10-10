@@ -234,15 +234,16 @@ class AIService:
     
     def _track_action_for_reversal(self, function_name: str, arguments: Dict, result: str):
         """Track function calls for contextual reversal detection."""
-        if "install" in function_name:
-            self.last_action = "install_agent"
+        # Check for uninstall/remove first (more specific)
+        if "uninstall" in function_name or "remove" in function_name:
+            self.last_action = "uninstall_agent"
             self.last_action_details = {
                 "function": function_name,
                 "arguments": arguments,
                 "result": result
             }
-        elif "uninstall" in function_name or "remove" in function_name:
-            self.last_action = "uninstall_agent"
+        elif "install" in function_name:
+            self.last_action = "install_agent"
             self.last_action_details = {
                 "function": function_name,
                 "arguments": arguments,

@@ -104,8 +104,10 @@ pip-cache/
 .cache/pip/
 __pip-runner__/
 
-# Tests and diagnostics
-tests/
+# Test artifacts but not test files themselves
+.coverage
+htmlcov/
+.pytest_cache/
 
 # GitHub Copilot
 .github/copilot-instructions.md
