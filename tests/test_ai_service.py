@@ -112,6 +112,20 @@ class TestFunctionToolCalling(unittest.TestCase):
         })
         self.env_patcher.start()
         
+        # Mock VOLTTRON installation check to return True so functions proceed normally
+        self.volttron_install_patcher = patch('chat_app.volttron_commands.check_volttron_installation')
+        self.mock_volttron_install = self.volttron_install_patcher.start()
+        self.mock_volttron_install.return_value = None  # Return None means VOLTTRON is installed
+        
+        # Also mock the command finding functions to simulate VOLTTRON being available
+        self.find_volttron_patcher = patch('chat_app.volttron_commands.find_volttron_command')
+        self.mock_find_volttron = self.find_volttron_patcher.start()
+        self.mock_find_volttron.return_value = "/usr/local/bin/volttron"
+        
+        self.find_vctl_patcher = patch('chat_app.volttron_commands.find_vctl_command')
+        self.mock_find_vctl = self.find_vctl_patcher.start()
+        self.mock_find_vctl.return_value = "/usr/local/bin/vctl"
+        
         self.ai_service = AIService('gpt-4o-mini')
         
     def tearDown(self):
@@ -119,6 +133,7 @@ class TestFunctionToolCalling(unittest.TestCase):
         os.chdir(self.original_dir)
         shutil.rmtree(self.test_dir)
         self.env_patcher.stop()
+        self.volttron_install_patcher.stop()
     
     @patch('chat_app.volttron_commands.check_volttron_status')
     def test_function_tool_call_success(self, mock_volttron_status):
@@ -188,6 +203,11 @@ class TestDirectCommandHandling(unittest.TestCase):
         })
         self.env_patcher.start()
         
+        # Mock VOLTTRON installation check
+        self.volttron_install_patcher = patch('chat_app.volttron_commands.check_volttron_installation')
+        self.mock_volttron_install = self.volttron_install_patcher.start()
+        self.mock_volttron_install.return_value = None
+        
         self.ai_service = AIService('gpt-4o-mini')
         
     def tearDown(self):
@@ -195,6 +215,7 @@ class TestDirectCommandHandling(unittest.TestCase):
         os.chdir(self.original_dir)
         shutil.rmtree(self.test_dir)
         self.env_patcher.stop()
+        self.volttron_install_patcher.stop()
     
     @patch('chat_app.volttron_commands.vctl_status')
     def test_status_command_detection(self, mock_status):
@@ -425,6 +446,11 @@ class TestErrorHandling(unittest.TestCase):
         })
         self.env_patcher.start()
         
+        # Mock VOLTTRON installation check
+        self.volttron_install_patcher = patch('chat_app.volttron_commands.check_volttron_installation')
+        self.mock_volttron_install = self.volttron_install_patcher.start()
+        self.mock_volttron_install.return_value = None
+        
         self.ai_service = AIService('gpt-4o-mini')
         
     def tearDown(self):
@@ -432,6 +458,7 @@ class TestErrorHandling(unittest.TestCase):
         os.chdir(self.original_dir)
         shutil.rmtree(self.test_dir)
         self.env_patcher.stop()
+        self.volttron_install_patcher.stop()
     
     def test_invalid_conversation_history_file(self):
         """Test handling of invalid conversation history file."""
@@ -492,6 +519,11 @@ class TestIntegrationScenarios(unittest.TestCase):
         })
         self.env_patcher.start()
         
+        # Mock VOLTTRON installation check
+        self.volttron_install_patcher = patch('chat_app.volttron_commands.check_volttron_installation')
+        self.mock_volttron_install = self.volttron_install_patcher.start()
+        self.mock_volttron_install.return_value = None
+        
         self.ai_service = AIService('gpt-4o-mini')
         
     def tearDown(self):
@@ -499,6 +531,7 @@ class TestIntegrationScenarios(unittest.TestCase):
         os.chdir(self.original_dir)
         shutil.rmtree(self.test_dir)
         self.env_patcher.stop()
+        self.volttron_install_patcher.stop()
     
     @patch('chat_app.volttron_commands.vctl_install_listener_agent')
     @patch('chat_app.volttron_commands.vctl_uninstall_agent')
