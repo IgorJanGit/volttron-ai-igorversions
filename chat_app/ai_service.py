@@ -42,6 +42,7 @@ class AIService:
         self.function_tools = {}  # Registry of available function tools
         self._register_function_tools()  # Register all VOLTTRON function tools
         self._load_conversation_history()  # Load any previous conversation
+        self.system_prompt = self._get_volttron_system_prompt()  # Initialize system prompt after methods are ready
         self._setup_agent()
     
     def _load_conversation_history(self):
