@@ -64,9 +64,9 @@ def stop_volttron():
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        # Stop volttron platform using the exact command that works: vctl shutdown
+        # Stop volttron platform using the exact command that works: vctl shutdown --platform
         result = subprocess.run(
-            [vctl_cmd, "shutdown"], 
+            [vctl_cmd, "shutdown", "--platform"], 
             capture_output=True, 
             text=True,
             env=env,
