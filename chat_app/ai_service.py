@@ -4,6 +4,15 @@ import re
 import json
 import openai
 import inspect
+try:
+    from pydantic_ai_slim import Agent
+except ImportError:
+    # Fallback for different package names
+    try:
+        from pydantic_ai import Agent
+    except ImportError:
+        print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
+        Agent = None
 from .volttron_commands import (
     start_volttron, stop_volttron, check_volttron_status, read_volttron_log,
     vctl_status, vctl_status_detailed, vctl_list_agents, vctl_start_agent, vctl_stop_agent, vctl_health,
@@ -753,49 +762,316 @@ Please specify which agent to uninstall. Examples:
             # Default to checking status if we're not sure where we are
             return check_volttron_status()
     
+    def _create_agent_with_tools(self):
+        """Create an agent for custom client usage with tools."""
+        if Agent is not None:
+            agent = Agent(
+                self.model_name,
+                system_prompt=self._get_volttron_system_prompt()
+            )
+            self._register_volttron_tools_on_agent(agent)
+            return agent
+        else:
+            return None
+    
+    def _register_volttron_tools(self):
+        """Register VOLTTRON control tools with the agent using Pydantic AI's tool system."""
+        @self.agent.tool_plain
+        def start_volttron_tool() -> str:
+            """Start the VOLTTRON platform."""
+            return start_volttron()
+        
+        @self.agent.tool_plain
+        def stop_volttron_tool() -> str:
+            """Stop the VOLTTRON platform."""
+            return stop_volttron()
+        
+        @self.agent.tool_plain
+        def check_volttron_status_tool() -> str:
+            """Check VOLTTRON platform status and show recent logs."""
+            return check_volttron_status()
+        
+        @self.agent.tool_plain
+        def get_vctl_status_tool() -> str:
+            """Get VOLTTRON platform status using vctl status command."""
+            return vctl_status()
+        
+        @self.agent.tool_plain
+        def read_volttron_log_tool(num_lines: int = 10) -> str:
+            """Read recent VOLTTRON log entries.
+            
+            Args:
+                num_lines: Number of recent log lines to read (default: 10)
+            """
+            return read_volttron_log(num_lines)
+        
+        @self.agent.tool_plain
+        def list_agents_tool() -> str:
+            """List all installed VOLTTRON agents."""
+            return vctl_list_agents()
+        
+        @self.agent.tool_plain
+        def start_agent_tool(agent_uuid: str) -> str:
+            """Start a VOLTTRON agent by UUID.
+            
+            Args:
+                agent_uuid: The UUID of the agent to start
+            """
+            return vctl_start_agent(agent_uuid)
+        
+        @self.agent.tool_plain
+        def stop_agent_tool(agent_uuid: str) -> str:
+            """Stop a VOLTTRON agent by UUID.
+            
+            Args:
+                agent_uuid: The UUID of the agent to stop
+            """
+            return vctl_stop_agent(agent_uuid)
+        
+        @self.agent.tool_plain
+        def install_agent_tool(agent_name: str) -> str:
+            """Install a VOLTTRON agent by name.
+            
+            Args:
+                agent_name: Name of the agent to install (e.g., 'listener', 'platform-driver')
+            """
+            return vctl_install_agent(agent_name)
+        
+        @self.agent.tool_plain
+        def uninstall_agent_tool(agent_uuid: str) -> str:
+            """Uninstall a VOLTTRON agent by UUID (stop and remove).
+            
+            Args:
+                agent_uuid: The UUID of the agent to uninstall
+            """
+            return vctl_uninstall_agent(agent_uuid)
+        
+        @self.agent.tool_plain
+        def get_volttron_help_tool() -> str:
+            """Get detailed VOLTTRON installation and setup help."""
+            return get_detailed_installation_help()
+        
+        @self.agent.tool_plain
+        def list_available_agents_tool() -> str:
+            """Show all available VOLTTRON agents that can be installed."""
+            return list_available_agents()
+        
+        @self.agent.tool_plain
+        def vctl_status_detailed_tool() -> str:
+            """Get detailed VOLTTRON platform and agent status."""
+            return vctl_status_detailed()
+        
+        @self.agent.tool_plain
+        def vctl_health_tool() -> str:
+            """Check VOLTTRON platform health status."""
+            return vctl_health()
+        
+        @self.agent.tool_plain
+        def install_platform_driver_tool() -> str:
+            """Install the VOLTTRON platform driver for device communication."""
+            return vctl_install_platform_driver()
+        
+        @self.agent.tool_plain
+        def install_fake_driver_library_tool() -> str:
+            """Install the fake driver library for testing and development."""
+            return install_fake_driver_library()
+        
+        @self.agent.tool_plain
+        def create_fake_driver_config_tool() -> str:
+            """Create configuration for fake driver devices."""
+            return create_fake_driver_config()
+        
+        @self.agent.tool_plain
+        def store_fake_driver_config_tool() -> str:
+            """Store the fake driver configuration in VOLTTRON."""
+            return store_fake_driver_config()
+        
+        @self.agent.tool_plain
+        def setup_fake_driver_monitoring_tool() -> str:
+            """Set up monitoring for fake driver data."""
+            return setup_fake_driver_monitoring()
+        
+        @self.agent.tool_plain
+        def subscribe_to_fake_data_tool() -> str:
+            """Subscribe to fake sensor data for monitoring."""
+            return subscribe_to_fake_data()
+        
+        @self.agent.tool_plain
+        def show_recent_logs_tool(lines: int = 20) -> str:
+            """Show recent VOLTTRON log entries.
+            
+            Args:
+                lines: Number of recent log lines to show (default: 20)
+            """
+            return show_recent_logs(lines)
+        
+        @self.agent.tool_plain
+        def check_volttron_installation_tool() -> str:
+            """Check if VOLTTRON is properly installed and configured."""
+            return check_volttron_installation()
+        
+        @self.agent.tool_plain
+        def kill_existing_processes_tool() -> str:
+            """Kill any existing VOLTTRON processes (cleanup utility)."""
+            return kill_existing_volttron_processes()
+        
+        @self.agent.tool_plain
+        def uninstall_all_listeners_tool() -> str:
+            """Uninstall all listener agents from the platform."""
+            return vctl_uninstall_all_listeners()
+        
+        @self.agent.tool_plain
+        def install_listener_agent_tool() -> str:
+            """Install a listener agent for monitoring platform messages."""
+            return vctl_install_listener_agent()
+        
+        @self.agent.tool_plain
+        def verify_agent_uninstalled_tool(agent_name: str, verification_type: str = "comprehensive") -> str:
+            """Verify that an agent has been completely uninstalled.
+            
+            Args:
+                agent_name: Name or UUID of the agent to verify
+                verification_type: Type of verification (basic, comprehensive)
+            """
+            return verify_agent_uninstalled(agent_name, verification_type)
+        
+        @self.agent.tool_plain
+        def get_volttron_next_steps_tool() -> str:
+            """Get suggested next steps for VOLTTRON development."""
+            return get_volttron_next_steps()
+        
+        @self.agent.tool_plain
+        def show_formatting_test_tool() -> str:
+            """Show a formatting test to verify output display."""
+            return show_formatting_test()
+
+    def _register_volttron_tools_on_agent(self, agent):
+        """Register VOLTTRON control tools on a specific agent."""
+        @agent.tool_plain
+        def start_volttron_tool() -> str:
+            """Start the VOLTTRON platform."""
+            return start_volttron()
+        
+        @agent.tool_plain
+        def stop_volttron_tool() -> str:
+            """Stop the VOLTTRON platform."""
+            return stop_volttron()
+        
+        @agent.tool_plain
+        def check_volttron_status_tool() -> str:
+            """Check VOLTTRON platform status and show recent logs."""
+            return check_volttron_status()
+        
+        @agent.tool_plain
+        def list_agents_tool() -> str:
+            """List all installed VOLTTRON agents."""
+            return vctl_list_agents()
+        
+        @agent.tool_plain
+        def install_agent_tool(agent_name: str) -> str:
+            """Install a VOLTTRON agent by name."""
+            return vctl_install_agent(agent_name)
+    
+    def _get_volttron_system_prompt(self):
+        """Get the system prompt for VOLTTRON AI assistant."""
+        return (
+            "You are VOLTTRON AI Assistant, an intelligent assistant for VOLTTRON platform operations. "
+            "You have access to comprehensive VOLTTRON management tools through function calls using the @agent.tool_plain decorator pattern. "
+            "\n\nCOMPREHENSIVE TOOL CAPABILITIES:\n"
+            "🏗️ PLATFORM CONTROL:\n"
+            "- start_volttron_tool: Start the VOLTTRON platform\n"
+            "- stop_volttron_tool: Stop the VOLTTRON platform\n"
+            "- check_volttron_installation_tool: Verify VOLTTRON installation\n"
+            "- kill_existing_processes_tool: Clean up existing VOLTTRON processes\n"
+            "\n🔍 STATUS & MONITORING:\n"
+            "- check_volttron_status_tool: Check platform status with logs\n"
+            "- get_vctl_status_tool: Get detailed vctl status\n"
+            "- vctl_status_detailed_tool: Get comprehensive status information\n"
+            "- vctl_health_tool: Check platform health\n"
+            "- show_recent_logs_tool: Show recent VOLTTRON logs\n"
+            "\n🤖 AGENT MANAGEMENT:\n"
+            "- list_agents_tool: List all installed agents\n"
+            "- list_available_agents_tool: Show available agents for installation\n"
+            "- install_agent_tool: Install agents by name\n"
+            "- start_agent_tool: Start agents by UUID\n"
+            "- stop_agent_tool: Stop agents by UUID\n"
+            "- uninstall_agent_tool: Completely uninstall agents\n"
+            "- verify_agent_uninstalled_tool: Verify agent removal\n"
+            "\n🔧 SPECIALIZED INSTALLATIONS:\n"
+            "- install_platform_driver_tool: Install platform driver\n"
+            "- install_listener_agent_tool: Install listener agent\n"
+            "- uninstall_all_listeners_tool: Remove all listener agents\n"
+            "\n🧪 DEVELOPMENT & TESTING:\n"
+            "- install_fake_driver_library_tool: Install fake driver for testing\n"
+            "- create_fake_driver_config_tool: Create fake driver configuration\n"
+            "- store_fake_driver_config_tool: Store fake driver config\n"
+            "- setup_fake_driver_monitoring_tool: Set up fake data monitoring\n"
+            "- subscribe_to_fake_data_tool: Subscribe to fake sensor data\n"
+            "\n📚 HELP & GUIDANCE:\n"
+            "- get_volttron_help_tool: Get detailed installation help\n"
+            "- get_volttron_next_steps_tool: Get suggested next steps\n"
+            "- show_formatting_test_tool: Test output formatting\n"
+            "\n📋 USAGE GUIDELINES:\n"
+            "✅ ALWAYS use the function tools to perform VOLTTRON operations\n"
+            "✅ Execute commands rather than just providing instructions\n"
+            "✅ Check actual status and provide real-time information\n"
+            "✅ Use comprehensive verification tools when requested\n"
+            "✅ Provide step-by-step guidance using actual tool execution\n"
+            "\n🎯 PYDANTIC AI PATTERN:\n"
+            "All tools are registered using @agent.tool_plain decorators for seamless AI integration. "
+            "The AI automatically determines which tools to call based on user requests and provides "
+            "comprehensive VOLTTRON platform management capabilities."
+        )
+
     def _setup_agent(self):
-        """Setup the AI client with the specified model or custom webapp if configured."""
+        """Setup the Pydantic-AI agent with the specified model or custom webapp if configured."""
         ai_webapp_url = os.getenv("AI_WEBAPP_URL")
         ai_api_key = os.getenv("AI_API_KEY")
         
         try:
+            # Use custom OpenAI-compatible API (like PNNL)
             if ai_webapp_url and ai_api_key:
-                # Use custom OpenAI-compatible API (like PNNL)
                 self.custom_client = openai.OpenAI(
                     api_key=ai_api_key,
                     base_url=ai_webapp_url
                 )
-                # Extract just the model name without provider prefix
                 self.custom_model = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
+                # Create agent for custom client with tools
+                self.agent = self._create_agent_with_tools()
+            # Use Ollama if model_name starts with 'ollama:'
+            elif self.model_name.startswith("ollama:"):
+                if Agent is not None:
+                    from pydantic_ai_slim.models.openai import OpenAIChatModel
+                    from pydantic_ai_slim.providers.ollama import OllamaProvider
+                    # Extract model name after provider prefix
+                    model_id = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
+                    # Use Ollama provider
+                    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+                    print(f"Connecting to Ollama at: {ollama_base_url}")
+                    print(f"Using model: {model_id}")
+                    self.agent = Agent(
+                        OpenAIChatModel(
+                            model_id,
+                            provider=OllamaProvider(base_url=ollama_base_url)
+                        ),
+                        system_prompt=self._get_volttron_system_prompt()
+                    )
+                    self._register_volttron_tools()
+                else:
+                    print("Ollama support requires Pydantic AI")
+                    self.agent = None
             else:
-                # Use standard OpenAI API - Python 3.8 compatible approach
-                if not os.getenv('OPENAI_API_KEY'):
-                    raise ValueError("OPENAI_API_KEY environment variable is required")
-                
-                # OpenAI client will automatically use OPENAI_API_KEY environment variable
-                
-            # Store system prompt for conversation context (Python 3.8 compatible)
-            self.system_prompt = (
-                "You are VOLTTRON AI Assistant, an intelligent assistant for VOLTTRON platform operations. "
-                "You maintain conversation context and remember previous interactions within this chat session. "
-                "\n\nCORE RESPONSIBILITIES:\n"
-                "- Assist users with VOLTTRON platform operations and agent management\n"
-                "- Maintain conversation context and refer to previous messages when relevant\n"
-                "- Execute VOLTTRON commands through available vctl functions\n"
-                "- Provide clear explanations of VOLTTRON concepts\n"
-                "\n\nAVAILABLE COMMANDS:\n"
-                "- vctl status: Show platform and agent status\n"
-                "- vctl install: Install agents from configuration files\n"
-                "- vctl start/stop: Start/stop agents by UUID or tag\n"
-                "- vctl remove: Remove stopped agents\n"
-                "- vctl uninstall: Complete uninstall (stop + remove) agents\n"
-                "- vctl list: Show installed agents\n"
-                "\n\nCONVERSATION CONTEXT:\n"
-                "You remember previous messages in this conversation. When users refer to "
-                "'the agent we just installed' or 'that error from before', use the conversation "
-                "history to understand the context. Build upon previous interactions and avoid "
-                "asking for information that was already provided."
-            )
+                # Use default provider logic (OpenAI, Anthropic, etc.) with pydantic-ai
+                if Agent is not None:
+                    self.agent = Agent(
+                        self.model_name,
+                        system_prompt=self._get_volttron_system_prompt()
+                    )
+                    self._register_volttron_tools()
+                else:
+                    # Fallback to OpenAI function calling if Pydantic AI not available
+                    print("Using OpenAI function calling (Pydantic AI not available)")
+                    self.agent = None
             
             print(f"✓ AI service initialized with model: {self.model_name}")
                 
