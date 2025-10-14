@@ -1281,7 +1281,9 @@ Please specify which agent to uninstall. Examples:
                 if re.search(pattern, text_to_check):
                     try:
                         if function_name in self.function_tools:
-                            result = self.function_tools[function_name]()
+                            # Get the actual function from the function tools registry
+                            func = self.function_tools[function_name]["function"]
+                            result = func()
                             executed_commands.append(f"\n📋 {function_name}:\n{result}")
                     except Exception as e:
                         executed_commands.append(f"\n❌ Error executing {function_name}: {e}")
