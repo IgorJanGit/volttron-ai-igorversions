@@ -589,6 +589,160 @@ class TestIntegrationScenarios(unittest.TestCase):
         self.assertEqual(info2['model_id'], 'gpt-4o-mini')
 
 
+class TestPydanticAIIntegration(unittest.TestCase):
+    """Test demonstrating AI's ability to run vctl status and understand output."""
+    
+    def setUp(self):
+        """Set up test environment for Pydantic AI integration tests."""
+        self.ai_service = AIService('test-model')
+        
+        # Disable VOLTTRON installation checks 
+        self.install_patcher = patch('chat_app.volttron_commands.check_volttron_installation', return_value=True)
+        self.install_patcher.start()
+        
+    def tearDown(self):
+        """Clean up test environment."""
+        self.install_patcher.stop()
+        
+    def test_ai_runs_vctl_status_and_understands_output(self):
+        """Demonstrate AI can run vctl status and understand what it reads."""
+        # Test sample status outputs that the AI should be able to understand
+        test_scenarios = [
+            {
+                'raw_output': "VOLTTRON is not running",
+                'expected_keywords': ['not running', 'start', 'platform'],
+                'description': 'platform stopped'
+            },
+            {
+                'raw_output': """UUID                                   AGENT                            IDENTITY     TAG       PRI STATUS       HEALTH
+f8c4b0e6-3f6c-4d7e-a8b9-1c2d3e4f5g6h platform.actuator                 platform.actuator  actuator  50  RUNNING      GOOD
+a1b2c3d4-e5f6-7890-1234-567890abcdef platform.historian              platform.historian historian 50  RUNNING      GOOD
+""",
+                'expected_keywords': ['running', 'agents', 'platform.actuator', 'platform.historian'],
+                'description': 'platform running with agents'
+            },
+            {
+                'raw_output': "No installed Agents found",
+                'expected_keywords': ['no agents', 'install', 'quiet'],
+                'description': 'platform running but no agents'
+            }
+        ]
+        
+        for scenario in test_scenarios:
+            with self.subTest(description=scenario['description']):
+                # Mock the subprocess call in vctl_status to return our test output
+                with patch('subprocess.run') as mock_subprocess:
+                    # Create a mock result object
+                    mock_result = type('MockResult', (), {
+                        'returncode': 0,
+                        'stdout': scenario['raw_output'],
+                        'stderr': ''
+                    })()
+                    mock_subprocess.return_value = mock_result
+                    
+                    # Mock supporting functions
+                    with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                         patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                        
+                        # Have the AI run vctl status using the tool
+                        result = self.ai_service.call_function_tool('vctl_status', {})
+                        
+                        # Verify the AI received some formatted output
+                        self.assertIsNotNone(result)
+                        self.assertNotEqual(result, "")
+                        self.assertNotEqual(result, "True")  # Should not be just a boolean
+                        
+                        # Verify the AI's response contains understanding keywords
+                        result_lower = result.lower()
+                        
+                        # Check that AI understood and incorporated key concepts
+                        keyword_found = False
+                        for keyword in scenario['expected_keywords']:
+                            if keyword.lower() in result_lower:
+                                keyword_found = True
+                                break
+                        
+                        self.assertTrue(keyword_found, 
+                            f"AI output should contain at least one of {scenario['expected_keywords']} "
+                            f"but got: {result[:100]}...")
+                        
+                        # Verify AI provides helpful, conversational response
+                        self.assertTrue(
+                            any(marker in result for marker in ['📋', '💬', '🟡', '❌', '🚀']) or
+                            any(phrase in result_lower for phrase in ['running', 'agents', 'quiet', 'installed']),
+                            f"AI should provide formatted, helpful response, got: {result[:100]}..."
+                        )
+    
+    def test_ai_can_interpret_status_for_troubleshooting(self):
+        """Test AI's ability to interpret status output for troubleshooting."""
+        # Test that AI can run status and understand the output
+        with patch('subprocess.run') as mock_subprocess:
+            # Mock vctl status showing platform not running
+            mock_result = type('MockResult', (), {
+                'returncode': 1,  # Non-zero return code indicates VOLTTRON not running
+                'stdout': "",
+                'stderr': "not connected"
+            })()
+            mock_subprocess.return_value = mock_result
+            
+            with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                 patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                
+                # AI checks status first
+                status_result = self.ai_service.call_function_tool('vctl_status', {})
+                self.assertIsNotNone(status_result)
+                
+                # Verify AI understood that VOLTTRON is not running
+                status_lower = status_result.lower()
+                self.assertTrue(
+                    'not running' in status_lower or 
+                    'start' in status_lower or
+                    'oops' in status_lower
+                )
+                
+                # This demonstrates the AI can understand status and knows what to suggest
+                # The actual start command would be a separate action in real usage
+                
+    def test_ai_understanding_of_complex_status_output(self):
+        """Test AI's ability to understand complex VOLTTRON status information."""
+        complex_status = """UUID                                   AGENT                            IDENTITY            TAG      PRI STATUS       HEALTH
+f8c4b0e6-3f6c-4d7e-a8b9-1c2d3e4f5g6h platform.actuator                 platform.actuator   actuator  50  RUNNING      GOOD
+a1b2c3d4-e5f6-7890-1234-567890abcdef platform.historian              platform.historian historian 50  RUNNING      GOOD  
+9z8y7x6w-5v4u-3t2s-1r0q-p9o8n7m6l5k4 platform.listener                platform.listener   listener  50  RUNNING      GOOD
+2a3b4c5d-6e7f-8901-2345-6789abcdef01 weather.agent                    weather.agent       weather   50  RUNNING      GOOD
+1x2y3z4a-5b6c-7890-1234-567890abcdef control.agent                    control.agent       control   50  STOPPED      BAD"""
+        
+        with patch('subprocess.run') as mock_subprocess:
+            mock_result = type('MockResult', (), {
+                'returncode': 0,
+                'stdout': complex_status,
+                'stderr': ''
+            })()
+            mock_subprocess.return_value = mock_result
+            
+            with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                 patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                
+                # Have the AI process complex status output
+                result = self.ai_service.call_function_tool('vctl_status', {})
+                
+                # Verify AI can extract and understand key information
+                self.assertIsNotNone(result)
+                result_lower = result.lower()
+                
+                # AI should provide formatted, conversational output
+                self.assertTrue(
+                    any(marker in result for marker in ['📋', '💬', 'agents']),
+                    f"AI should provide formatted response about agents, got: {result[:100]}..."
+                )
+                
+                # AI should understand there are multiple agents (at least some are running)
+                self.assertTrue(
+                    'running' in result_lower,
+                    f"AI should mention running agents in response: {result[:100]}..."
+                )
+
+
 def run_tests():
     """Run all tests with detailed output."""
     # Create test suite
@@ -599,7 +753,8 @@ def run_tests():
         TestContextualReversal,
         TestConversationHistory,
         TestErrorHandling,
-        TestIntegrationScenarios
+        TestIntegrationScenarios,
+        TestPydanticAIIntegration
     ]
     
     suite = unittest.TestSuite()
