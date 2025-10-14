@@ -1125,6 +1125,9 @@ Please specify which agent to uninstall. Examples:
     async def _generate_ai_response_with_tools(self, message: str) -> str:
         """Generate AI response with function tools support."""
         try:
+            # Check if we're using a Claude model that doesn't support OpenAI function calling
+            is_claude_model = "claude" in self.model_name.lower() or "anthropic" in self.model_name.lower()
+            
             # Prepare messages for the AI model
             messages = [
                 {
@@ -1140,59 +1143,11 @@ Please specify which agent to uninstall. Examples:
             # Add current user message
             messages.append({"role": "user", "content": message})
             
-            # Get function schemas
-            function_schemas = self.get_function_schemas()
-            
-            # Make API call with function tools
-            if self.custom_client:
-                response = self.custom_client.chat.completions.create(
-                    model=self.custom_model,
-                    messages=messages,
-                    functions=function_schemas,
-                    function_call="auto",
-                    max_tokens=1000,
-                    temperature=0.7
-                )
-            else:
-                client = openai.OpenAI()
-                response = client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    functions=function_schemas,
-                    function_call="auto",
-                    max_tokens=1000,
-                    temperature=0.7
-                )
-            
-            # Process the response
-            message_response = response.choices[0].message
-            
-            # Check if the model wants to call a function
-            if message_response.function_call:
-                function_name = message_response.function_call.name
-                function_args = json.loads(message_response.function_call.arguments)
-                
-                # Call the function
-                function_result = self.call_function_tool(function_name, function_args)
-                
-                # Add function call and result to conversation
-                messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "function_call": {
-                        "name": function_name,
-                        "arguments": message_response.function_call.arguments
-                    }
-                })
-                messages.append({
-                    "role": "function",
-                    "name": function_name,
-                    "content": function_result
-                })
-                
-                # Get final response from AI after function call
+            # For Claude models, use a simpler approach without function calling
+            if is_claude_model:
+                # Make API call without function parameters for Claude
                 if self.custom_client:
-                    final_response = self.custom_client.chat.completions.create(
+                    response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
                         messages=messages,
                         max_tokens=1000,
@@ -1200,17 +1155,94 @@ Please specify which agent to uninstall. Examples:
                     )
                 else:
                     client = openai.OpenAI()
-                    final_response = client.chat.completions.create(
+                    response = client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,
                         max_tokens=1000,
                         temperature=0.7
                     )
                 
-                ai_response = final_response.choices[0].message.content
+                # Process Claude response and try to extract commands
+                ai_response = response.choices[0].message.content
+                
+                # Try to execute any commands the AI mentions
+                ai_response = self._process_claude_response_for_commands(ai_response, message)
+                
             else:
-                # No function call, just return the AI response
-                ai_response = message_response.content
+                # For OpenAI models, use function calling
+                function_schemas = self.get_function_schemas()
+                
+                # Make API call with function tools
+                if self.custom_client:
+                    response = self.custom_client.chat.completions.create(
+                        model=self.custom_model,
+                        messages=messages,
+                        functions=function_schemas,
+                        function_call="auto",
+                        max_tokens=1000,
+                        temperature=0.7
+                    )
+                else:
+                    client = openai.OpenAI()
+                    response = client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        functions=function_schemas,
+                        function_call="auto",
+                        max_tokens=1000,
+                        temperature=0.7
+                    )
+                
+                # Process the response
+                message_response = response.choices[0].message
+                
+                # Check if the model wants to call a function
+                if message_response.function_call:
+                    # Extract function name and arguments
+                    function_name = message_response.function_call.name
+                    function_args = json.loads(message_response.function_call.arguments)
+                    
+                    # Execute the function
+                    function_result = self.execute_function_call(function_name, function_args)
+                    
+                    # Create a follow-up message with the function result
+                    follow_up_messages = messages + [
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "function_call": {
+                                "name": function_name,
+                                "arguments": message_response.function_call.arguments
+                            }
+                        },
+                        {
+                            "role": "function",
+                            "name": function_name,
+                            "content": function_result
+                        }
+                    ]
+                    
+                    # Get final response
+                    if self.custom_client:
+                        final_response = self.custom_client.chat.completions.create(
+                            model=self.custom_model,
+                            messages=follow_up_messages,
+                            max_tokens=1000,
+                            temperature=0.7
+                        )
+                    else:
+                        client = openai.OpenAI()
+                        final_response = client.chat.completions.create(
+                            model=self.model_name,
+                            messages=follow_up_messages,
+                            max_tokens=1000,
+                            temperature=0.7
+                        )
+                    
+                    ai_response = final_response.choices[0].message.content
+                else:
+                    # No function call, just return the AI response
+                    ai_response = message_response.content
             
             # Update conversation history
             self.conversation_history.append({"role": "user", "content": message})
@@ -1223,6 +1255,46 @@ Please specify which agent to uninstall. Examples:
             print(f"Error in AI response generation: {e}")
             # Fallback to direct command handling
             return self._handle_direct_command(message) or f"❌ I encountered an error: {str(e)}. Please try again."
+    
+    def _process_claude_response_for_commands(self, ai_response: str, user_message: str) -> str:
+        """Process Claude response and try to execute any VOLTTRON commands mentioned."""
+        try:
+            # Look for common command patterns in the response
+            command_patterns = {
+                r"vctl\s+status": "vctl_status",
+                r"check.*status": "vctl_status", 
+                r"start.*volttron": "start_volttron",
+                r"stop.*volttron": "stop_volttron",
+                r"list.*agents": "vctl_list_agents",
+                r"install.*driver": "install_fake_driver_library",
+                r"install.*agent": "vctl_install_listener_agent",
+                r"show.*logs": "show_recent_logs",
+                r"health.*check": "vctl_health"
+            }
+            
+            # Check user message and AI response for command patterns
+            text_to_check = (user_message + " " + ai_response).lower()
+            
+            # Try to execute relevant commands
+            executed_commands = []
+            for pattern, function_name in command_patterns.items():
+                if re.search(pattern, text_to_check):
+                    try:
+                        if function_name in self.function_tools:
+                            result = self.function_tools[function_name]()
+                            executed_commands.append(f"\n📋 {function_name}:\n{result}")
+                    except Exception as e:
+                        executed_commands.append(f"\n❌ Error executing {function_name}: {e}")
+            
+            # Append command results to AI response
+            if executed_commands:
+                ai_response += "\n\n🤖 **Command Execution Results:**" + "".join(executed_commands)
+            
+            return ai_response
+            
+        except Exception as e:
+            print(f"Error processing Claude response: {e}")
+            return ai_response
     
     def _get_enhanced_system_prompt(self) -> str:
         """Get enhanced system prompt with function tools information."""
