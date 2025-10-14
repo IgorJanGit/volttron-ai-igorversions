@@ -24,13 +24,155 @@ from .volttron_commands import (
     vctl_install_agent, list_available_agents, verify_agent_uninstalled
 )
 
+# Initialize the Pydantic AI agent with proper function tools using decorators
+try:
+    # Try to create agent with Pydantic AI
+    from pydantic_ai_slim import Agent
+    agent = Agent(
+        model=None,  # Will be set dynamically
+        system_prompt=""  # Will be set dynamically
+    )
+except ImportError:
+    try:
+        from pydantic_ai import Agent
+        agent = Agent(
+            model=None,  # Will be set dynamically  
+            system_prompt=""  # Will be set dynamically
+        )
+    except ImportError:
+        print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
+        agent = None
+
+# Register VOLTTRON function tools using @agent.tool_plain decorator
+if agent:
+    @agent.tool_plain
+    def start_volttron_tool() -> str:
+        """Start the VOLTTRON platform."""
+        return start_volttron()
+
+    @agent.tool_plain  
+    def stop_volttron_tool() -> str:
+        """Stop the VOLTTRON platform."""
+        return stop_volttron()
+
+    @agent.tool_plain
+    def check_volttron_status_tool() -> str:
+        """Check if VOLTTRON platform is running."""
+        return check_volttron_status()
+
+    @agent.tool_plain
+    def get_vctl_status_tool() -> str:
+        """Get current status of all installed agents."""
+        return vctl_status()
+
+    @agent.tool_plain
+    def vctl_status_detailed_tool() -> str:
+        """Get detailed status information about VOLTTRON agents."""
+        return vctl_status_detailed()
+
+    @agent.tool_plain
+    def list_agents_tool() -> str:
+        """List all installed VOLTTRON agents."""
+        return vctl_list_agents()
+
+    @agent.tool_plain
+    def start_agent_tool(agent_uuid: str) -> str:
+        """Start a VOLTTRON agent by UUID.
+        
+        Args:
+            agent_uuid: The UUID or tag of the agent to start
+        """
+        return vctl_start_agent(agent_uuid)
+
+    @agent.tool_plain
+    def stop_agent_tool(agent_uuid: str) -> str:
+        """Stop a VOLTTRON agent by UUID.
+        
+        Args:
+            agent_uuid: The UUID or tag of the agent to stop
+        """
+        return vctl_stop_agent(agent_uuid)
+
+    @agent.tool_plain
+    def vctl_health_tool() -> str:
+        """Check VOLTTRON platform health."""
+        return vctl_health()
+
+    @agent.tool_plain
+    def install_platform_driver_tool() -> str:
+        """Install the VOLTTRON platform driver agent."""
+        return vctl_install_platform_driver()
+
+    @agent.tool_plain
+    def install_fake_driver_library_tool() -> str:
+        """Install the fake driver library for testing."""
+        return install_fake_driver_library()
+
+    @agent.tool_plain
+    def create_fake_driver_config_tool() -> str:
+        """Create configuration for a fake driver."""
+        return create_fake_driver_config()
+
+    @agent.tool_plain
+    def store_fake_driver_config_tool() -> str:
+        """Store the fake driver configuration."""
+        return store_fake_driver_config()
+
+    @agent.tool_plain
+    def setup_fake_driver_monitoring_tool() -> str:
+        """Setup monitoring for the fake driver."""
+        return setup_fake_driver_monitoring()
+
+    @agent.tool_plain
+    def subscribe_to_fake_data_tool() -> str:
+        """Subscribe to fake driver data."""
+        return subscribe_to_fake_data()
+
+    @agent.tool_plain
+    def show_recent_logs_tool() -> str:
+        """Show recent VOLTTRON logs."""
+        return show_recent_logs()
+
+    @agent.tool_plain
+    def check_volttron_installation_tool() -> str:
+        """Check if VOLTTRON is properly installed."""
+        return check_volttron_installation()
+
+    @agent.tool_plain
+    def kill_existing_processes_tool() -> str:
+        """Kill any existing VOLTTRON processes."""
+        return kill_existing_volttron_processes()
+
+    @agent.tool_plain
+    def uninstall_agent_tool(agent_uuid: str) -> str:
+        """Uninstall a VOLTTRON agent by UUID.
+        
+        Args:
+            agent_uuid: The UUID or tag of the agent to uninstall
+        """
+        return vctl_uninstall_agent(agent_uuid)
+
+    @agent.tool_plain
+    def install_listener_agent_tool() -> str:
+        """Install a VOLTTRON listener agent."""
+        return vctl_install_listener_agent()
+
+    @agent.tool_plain
+    def install_agent_tool(agent_name: str) -> str:
+        """Install a VOLTTRON agent by name.
+        
+        Args:
+            agent_name: The name of the agent to install
+        """
+        return vctl_install_agent(agent_name)
+
 class AIService:
     """Service for handling AI model interactions with function tools support."""
     
     def __init__(self, model_name: str):
         """Initialize the AI service with a specific model."""
         self.model_name = model_name
-        self.agent = None
+        self.agent = agent  # Use the globally defined Pydantic AI agent
         self.custom_client = None
         self.conversation_history = []  # Track conversation for context
         self.last_numbered_options = {}  # Track last numbered options provided
@@ -39,10 +181,22 @@ class AIService:
         self.conversation_file = "conversation_history.json"  # File to persist conversation
         self.last_action = None  # Track the last action performed for context reversal
         self.last_action_details = {}  # Store details about the last action
-        self.function_tools = {}  # Registry of available function tools
-        self._register_function_tools()  # Register all VOLTTRON function tools
+        self.function_tools = {}  # Registry of available function tools (for fallback)
+        self.system_prompt = self._get_volttron_system_prompt()  # Initialize system prompt
+        
+        # Setup the agent with the correct model and system prompt
+        if self.agent:
+            try:
+                # Update agent model and system prompt
+                self.agent.model = model_name
+                self.agent.system_prompt = self.system_prompt
+            except Exception as e:
+                print(f"Warning: Could not configure Pydantic AI agent: {e}")
+                self.agent = None
+        
+        # Fallback function tools registration for non-Pydantic AI usage
+        self._register_fallback_function_tools()
         self._load_conversation_history()  # Load any previous conversation
-        self.system_prompt = self._get_volttron_system_prompt()  # Initialize system prompt after methods are ready
         self._setup_agent()
     
     def _load_conversation_history(self):
@@ -71,7 +225,7 @@ class AIService:
         except Exception as e:
             print(f"Could not save conversation history: {e}")
     
-    def _register_function_tools(self):
+    def _register_fallback_function_tools(self):
         """Register all VOLTTRON function tools with their schemas."""
         self.function_tools = {
             "start_volttron": {
@@ -1115,12 +1269,50 @@ Please specify which agent to uninstall. Examples:
             if direct_result:
                 return direct_result
             
-            # Use AI model with function tools for more complex interactions
+            # Try Pydantic AI agent first
+            if self.agent:
+                return await self._generate_response_with_pydantic_ai(message)
+            
+            # Fallback to manual function tools for Claude models or if Pydantic AI unavailable
             return await self._generate_ai_response_with_tools(message)
             
         except Exception as e:
             print(f"Error in generate_response: {e}")
             return f"❌ I encountered an error: {str(e)}. Please try again or rephrase your request."
+    
+    async def _generate_response_with_pydantic_ai(self, message: str) -> str:
+        """Generate response using Pydantic AI agent with proper tool support."""
+        try:
+            if not self.agent:
+                raise Exception("Pydantic AI agent not available")
+            
+            # Update conversation history in the agent context
+            conversation_messages = []
+            for msg in self.conversation_history[-10:]:  # Last 10 messages for context
+                if msg['role'] == 'user':
+                    conversation_messages.append(f"User: {msg['content']}")
+                elif msg['role'] == 'assistant':
+                    conversation_messages.append(f"Assistant: {msg['content']}")
+            
+            # Add context if available
+            context_message = ""
+            if conversation_messages:
+                context_message = f"\n\nRecent conversation:\n" + "\n".join(conversation_messages)
+            
+            # Run the agent with the message and context
+            result = await self.agent.arun(message + context_message)
+            
+            # Update conversation history
+            self.conversation_history.append({"role": "user", "content": message})
+            self.conversation_history.append({"role": "assistant", "content": result.data})
+            self._save_conversation_history()
+            
+            return result.data
+            
+        except Exception as e:
+            print(f"Error in Pydantic AI response generation: {e}")
+            # Fallback to manual approach
+            return await self._generate_ai_response_with_tools(message)
     
     async def _generate_ai_response_with_tools(self, message: str) -> str:
         """Generate AI response with function tools support."""
