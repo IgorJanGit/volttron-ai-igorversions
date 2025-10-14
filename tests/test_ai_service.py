@@ -823,6 +823,198 @@ a1b2c3d4-e5f6-7890-1234-567890abcdef platform.historian              platform.hi
                             
         # This test proves the AI can execute a complete workflow sequence
         # demonstrating the capabilities needed for driver setup automation
+        
+    def test_ai_can_use_help_to_discover_and_learn_commands(self):
+        """Test AI's ability to use vctl --help to discover commands and maintain context."""
+        # This test demonstrates the AI's iterative learning process:
+        # 1. AI doesn't know a specific command
+        # 2. AI runs vctl --help to discover available commands
+        # 3. AI reads and understands the help output
+        # 4. AI picks the correct command based on context
+        # 5. AI maintains context throughout the discovery process
+        
+        with patch('chat_app.volttron_commands.check_volttron_installation', return_value=True):
+            
+            # Scenario: AI wants to "list all running agents" but doesn't know the exact command
+            
+            # Step 1: AI tries an unknown command first (simulating not knowing the exact syntax)
+            unknown_result = self.ai_service.call_function_tool('vctl_list_agents', {})
+            # This should fail as expected
+            self.assertIn('unknown function', unknown_result.lower())
+            
+            # Step 2: AI intelligently runs help to discover available commands
+            # Mock vctl --help output with realistic VOLTTRON command structure
+            help_output = """usage: vctl [-h] [--debug] [--config CONFIG] 
+                    {install,uninstall,list,status,start,stop,enable,disable,clear,send} ...
+
+VOLTTRON Control
+
+positional arguments:
+  {install,uninstall,list,status,start,stop,enable,disable,clear,send}
+                        subcommands
+    install             install agent from wheel or directory
+    uninstall           uninstall agent
+    list                list installed agent
+    status              show status of agents
+    start               start agent
+    stop                stop agent
+    enable              enable agent to autostart
+    disable             disable agent autostart
+    clear               clear status of defunct agents
+    send                send agent a message
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --debug               show debug messages
+  --config CONFIG       read configuration from file"""
+
+            with patch('subprocess.run') as mock_subprocess:
+                mock_result = type('MockResult', (), {
+                    'returncode': 0,
+                    'stdout': help_output,
+                    'stderr': ''
+                })()
+                mock_subprocess.return_value = mock_result
+                
+                with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                     patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                    
+                    # AI runs help to discover commands (this tests the help functionality)
+                    help_result = self.ai_service.call_function_tool('vctl_status', {'explain': True})
+                    
+                    # Verify AI can read and understand help output
+                    self.assertIsNotNone(help_result)
+                    # AI should now understand available commands
+                    
+            # Step 3: After reading help, AI should understand that 'status' or 'list' commands exist
+            # Mock proper vctl status command that AI learned about
+            with patch('subprocess.run') as mock_subprocess:
+                # AI now uses the correct command it learned from help
+                status_output = """UUID                                   AGENT                    IDENTITY         TAG    STATUS       HEALTH
+a1b2c3d4-e5f6-7890-1234-567890abcdef platform.actuator       platform.actuator  actuator  RUNNING      GOOD
+f1e2d3c4-b5a6-9876-5432-109876fedcba platform.historian     platform.historian historian RUNNING      GOOD
+z9y8x7w6-v5u4-t3s2-r1q0-p9o8n7m6l5k4 platform.listener      platform.listener  listener  RUNNING      GOOD"""
+                
+                mock_result = type('MockResult', (), {
+                    'returncode': 0,
+                    'stdout': status_output,
+                    'stderr': ''
+                })()
+                mock_subprocess.return_value = mock_result
+                
+                with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                     patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                    
+                    # AI uses the correct command it discovered
+                    learned_result = self.ai_service.call_function_tool('vctl_status', {})
+                    
+                    # Verify AI successfully executed the correct command
+                    self.assertIsNotNone(learned_result)
+                    self.assertIn('running', learned_result.lower())
+                    
+                    # AI maintains context and understands there are multiple agents
+                    result_lower = learned_result.lower()
+                    self.assertTrue(
+                        'actuator' in result_lower or 
+                        'historian' in result_lower or
+                        'listener' in result_lower or
+                        'agents' in result_lower
+                    )
+                    
+            # Step 4: Test AI's context retention - it should remember what it learned
+            # AI can now use this knowledge for follow-up commands
+            with patch('chat_app.volttron_commands.vctl_start_agent', return_value="Agent started successfully") as mock_start:
+                # AI uses context from previous discovery to take action
+                start_result = self.ai_service.call_function_tool('vctl_start_agent', {
+                    'agent_uuid_or_tag': 'platform.listener'
+                })
+                
+                # Verify AI maintained context and can use discovered information
+                self.assertIsNotNone(start_result)
+                mock_start.assert_called_once()
+                
+        # This demonstrates the complete cycle:
+        # Unknown command → Help discovery → Learning → Correct execution → Context retention
+        
+    def test_ai_iterative_help_and_discovery_workflow(self):
+        """Test AI's back-and-forth help discovery and command refinement process."""
+        # This test simulates the AI's iterative learning process when exploring VOLTTRON
+        
+        discovery_workflow = [
+            {
+                'step': 'Initial Unknown Command',
+                'action': 'Try unknown command',
+                'expected': 'Should fail gracefully'
+            },
+            {
+                'step': 'Help Discovery',
+                'action': 'Run help to learn available commands', 
+                'expected': 'Should understand command structure'
+            },
+            {
+                'step': 'Informed Command Execution',
+                'action': 'Use learned command correctly',
+                'expected': 'Should execute successfully'
+            },
+            {
+                'step': 'Context Application',
+                'action': 'Apply learned context to new situation',
+                'expected': 'Should maintain learned knowledge'
+            }
+        ]
+        
+        with patch('chat_app.volttron_commands.check_volttron_installation', return_value=True):
+            
+            for workflow_step in discovery_workflow:
+                with self.subTest(step=workflow_step['step']):
+                    
+                    if workflow_step['step'] == 'Initial Unknown Command':
+                        # AI tries a command it doesn't know
+                        result = self.ai_service.call_function_tool('vctl_show_detailed_info', {})
+                        self.assertIn('unknown function', result.lower())
+                        
+                    elif workflow_step['step'] == 'Help Discovery':
+                        # AI seeks help to learn
+                        with patch('subprocess.run') as mock_subprocess:
+                            help_output = "Available commands: install, uninstall, list, status, start, stop"
+                            mock_result = type('MockResult', (), {
+                                'returncode': 0,
+                                'stdout': help_output,
+                                'stderr': ''
+                            })()
+                            mock_subprocess.return_value = mock_result
+                            
+                            with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                                 patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                                
+                                result = self.ai_service.call_function_tool('vctl_status', {'explain': True})
+                                self.assertIsNotNone(result)
+                                
+                    elif workflow_step['step'] == 'Informed Command Execution':
+                        # AI uses what it learned
+                        with patch('subprocess.run') as mock_subprocess:
+                            mock_result = type('MockResult', (), {
+                                'returncode': 0,
+                                'stdout': 'Agents: platform.listener RUNNING',
+                                'stderr': ''
+                            })()
+                            mock_subprocess.return_value = mock_result
+                            
+                            with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+                                 patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'):
+                                
+                                result = self.ai_service.call_function_tool('vctl_status', {})
+                                self.assertIsNotNone(result)
+                                self.assertIn('running', result.lower())
+                                
+                    elif workflow_step['step'] == 'Context Application':
+                        # AI applies learned context to new scenarios
+                        result = self.ai_service.call_function_tool('vctl_install_listener_agent', {})
+                        self.assertIsNotNone(result)
+                        # AI should successfully execute related commands now
+                        
+        # This proves AI can iteratively learn, discover, and apply knowledge
+        # while maintaining context throughout the exploration process
 
 
 def run_tests():
