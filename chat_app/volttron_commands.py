@@ -110,12 +110,18 @@ def format_volttron_warnings(stderr_output):
 
 def find_volttron_command():
     """Find volttron command in various locations."""
-    # First, check the known working VOLTTRON environment
+    # First, check the current project's virtual environment
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_env_volttron = os.path.join(os.path.dirname(current_dir), "env", "bin", "volttron")
+    if os.path.exists(project_env_volttron):
+        return project_env_volttron
+    
+    # Second, check the known working VOLTTRON environment
     volttron_env_path = "/home/igor/Work/Volttron_eclispe/env/bin/volttron"
     if os.path.exists(volttron_env_path):
         return volttron_env_path
     
-    # Second, check if it's in PATH
+    # Third, check if it's in PATH
     volttron_cmd = shutil.which("volttron")
     if volttron_cmd:
         return volttron_cmd
@@ -150,12 +156,18 @@ def find_volttron_command():
 
 def find_vctl_command():
     """Find vctl command in various locations."""
-    # First, check the known working VOLTTRON environment
+    # First, check the current project's virtual environment
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_env_vctl = os.path.join(os.path.dirname(current_dir), "env", "bin", "vctl")
+    if os.path.exists(project_env_vctl):
+        return project_env_vctl
+    
+    # Second, check the known working VOLTTRON environment
     vctl_env_path = "/home/igor/Work/Volttron_eclispe/env/bin/vctl"
     if os.path.exists(vctl_env_path):
         return vctl_env_path
     
-    # Second, check if it's in PATH
+    # Third, check if it's in PATH
     vctl_cmd = shutil.which("vctl")
     if vctl_cmd:
         return vctl_cmd
@@ -1900,6 +1912,153 @@ volttron -vv -l volttron.log &>/dev/null &
 Ask me: **"Can you start VOLTTRON for me?"** and I'll handle it!
 
 Once I'm running, come back and ask **"What's next?"** for vctl commands! 
+"""
+
+def install_volttron_with_pip():
+    """Install VOLTTRON using pip and set up the environment."""
+    try:
+        # First check if VOLTTRON is already installed
+        volttron_cmd = find_volttron_command()
+        if volttron_cmd:
+            return f"""
+🎉 **VOLTTRON is already installed!**
+
+✅ Found VOLTTRON at: {volttron_cmd}
+
+You can now:
+• **Start VOLTTRON**: "start volttron"
+• **Check status**: "vctl status"  
+• **Install agents**: "install listener agent"
+
+Ready to control your IoT platform! 🚀
+"""
+
+        # Find pip command
+        pip_cmd = find_pip_command()
+        if not pip_cmd:
+            return """
+❌ **Pip not found!**
+
+I need pip to install VOLTTRON. Please make sure Python and pip are installed:
+
+```bash
+# On Ubuntu/Debian:
+sudo apt update && sudo apt install python3-pip
+
+# On CentOS/RHEL:
+sudo yum install python3-pip
+
+# Or use curl:
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python3 get-pip.py
+```
+
+Then try asking me to install VOLTTRON again! 🔧
+"""
+
+        print(f"Installing VOLTTRON using pip: {pip_cmd}")
+        
+        # Install VOLTTRON using pip
+        result = subprocess.run(
+            [pip_cmd, "install", "volttron"],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode == 0:
+            # Installation successful, now setup environment
+            volttron_home = os.path.expanduser("~/.volttron")
+            
+            return f"""
+🎉 **VOLTTRON Installation Successful!**
+
+✅ **Installed via**: {pip_cmd} install volttron
+📁 **VOLTTRON_HOME**: {volttron_home}
+
+**Next Steps:**
+1. **Set environment variable**:
+   ```bash
+   export VOLTTRON_HOME={volttron_home}
+   ```
+
+2. **Configure VOLTTRON** (optional):
+   ```bash
+   vcfg
+   ```
+
+3. **Start VOLTTRON**:
+   ```bash
+   volttron -vv -l volttron.log &
+   ```
+
+**Or just ask me**: "start volttron" and I'll handle it! 🚀
+
+💡 **Installation complete!** You can now use commands like:
+• "Show VOLTTRON status"
+• "Install listener agent"  
+• "List all agents"
+"""
+        else:
+            # Installation failed
+            error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+            return f"""
+❌ **VOLTTRON Installation Failed**
+
+**Error output:**
+```
+{error_msg}
+```
+
+**Common solutions:**
+• **Upgrade pip**: `pip install --upgrade pip`
+• **Use virtual environment**: 
+  ```bash
+  python -m venv volttron-env
+  source volttron-env/bin/activate
+  pip install volttron
+  ```
+• **Install system dependencies**: 
+  ```bash
+  # Ubuntu/Debian:
+  sudo apt install build-essential python3-dev
+  
+  # CentOS/RHEL:
+  sudo yum groupinstall "Development Tools"
+  sudo yum install python3-devel
+  ```
+
+Try these fixes and ask me to install VOLTTRON again! 🔧
+"""
+            
+    except subprocess.TimeoutExpired:
+        return """
+⏱️ **Installation timed out**
+
+VOLTTRON installation is taking longer than expected (5+ minutes).
+
+**Try these alternatives:**
+• **Manual install**: Open a terminal and run `pip install volttron`
+• **Virtual environment**: Create a dedicated environment first
+• **Check internet**: Ensure you have a stable connection
+
+I can help you troubleshoot once the installation completes! 🔧
+"""
+    except Exception as e:
+        return f"""
+❌ **Installation error occurred**
+
+**Error**: {str(e)}
+
+**Please try manual installation:**
+```bash
+pip install volttron
+export VOLTTRON_HOME=~/.volttron
+vcfg
+volttron -vv -l volttron.log &
+```
+
+Once installed, I can help you control VOLTTRON! 🤖
 """
 
 def check_volttron_installation():

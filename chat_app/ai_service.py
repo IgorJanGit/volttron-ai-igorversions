@@ -21,7 +21,7 @@ from .volttron_commands import (
     store_fake_driver_config, setup_fake_driver_monitoring, subscribe_to_fake_data,
     show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
-    vctl_install_agent, list_available_agents, verify_agent_uninstalled
+    vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -165,6 +165,11 @@ if agent:
             agent_name: The name of the agent to install
         """
         return vctl_install_agent(agent_name)
+
+    @agent.tool_plain
+    def install_volttron_tool() -> str:
+        """Install VOLTTRON using pip and set up the environment."""
+        return install_volttron_with_pip()
 
 class AIService:
     """Service for handling AI model interactions with function tools support."""
@@ -361,6 +366,18 @@ class AIService:
                 "schema": {
                     "name": "list_available_agents",
                     "description": "List all available VOLTTRON agents that can be installed",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "install_volttron_with_pip": {
+                "function": install_volttron_with_pip,
+                "schema": {
+                    "name": "install_volttron_with_pip",
+                    "description": "Install VOLTTRON using pip and set up the environment",
                     "parameters": {
                         "type": "object",
                         "properties": {},
