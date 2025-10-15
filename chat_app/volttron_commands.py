@@ -247,6 +247,35 @@ VOLTTRON_HOME: `{volttron_home}`
 Environment is properly configured!
 """
 
+def is_volttron_running_quick():
+    """Quick check if VOLTTRON is running - returns True/False only."""
+    try:
+        # Use vctl status as the primary check since it actually tests functionality
+        vctl_cmd = find_vctl_command()
+        if vctl_cmd:
+            volttron_home = get_volttron_home()
+            env = os.environ.copy()
+            env["VOLTTRON_HOME"] = volttron_home
+            
+            result = subprocess.run(
+                [vctl_cmd, "status"],
+                capture_output=True, text=True, 
+                env=env, cwd=volttron_home, timeout=5
+            )
+            # If vctl status succeeds, VOLTTRON is actually running and functional
+            return result.returncode == 0
+            
+        # Fallback: Check for VOLTTRON processes (less reliable)
+        result = subprocess.run(
+            ["pgrep", "-f", "bin/volttron"],
+            capture_output=True, text=True, timeout=5
+        )
+        
+        return result.returncode == 0 and result.stdout.strip()
+        
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception):
+        return False
+
 def kill_existing_volttron_processes():
     """Kill any existing VOLTTRON processes to prevent conflicts - ensures only one VOLTTRON runs at a time."""
     killed_pids = []
@@ -542,7 +571,7 @@ Let me break down what you're seeing:
                 return f"{warning_msg}{explanation}\n{readable_status}\n\n💬 Need help with any of these agents? Just ask!"
             else:
                 # For brief status, show both the formatted table AND conversational summary
-                return f"{warning_msg}📋 **My Current Agents:**\n\n{readable_status}\n\n💬 **Summary:** {conversational_summary}"
+                return f"{warning_msg}🤖 **Here's what I've got running:**\n\n{readable_status}\n\n💬 {conversational_summary}"
                 
         else:
             error_msg = result.stderr or result.stdout or "Unknown error"
@@ -605,10 +634,10 @@ def make_status_conversational(status_output):
             line_upper = line.upper()
             has_status_column = False
             
-            # Look for explicit status words in remaining parts
+            # Look for explicit status words in remaining parts AND the full line
             for part in remaining_parts:
                 part_upper = part.upper()
-                if part_upper in ["RUNNING", "STARTED", "ACTIVE", "ENABLED"]:
+                if part_upper in ["RUNNING", "STARTED", "ACTIVE", "ENABLED"] or "RUNNING" in part_upper:
                     status = "RUNNING"
                     has_status_column = True
                 elif part_upper in ["STOPPED", "DISABLED", "INACTIVE", "EXITED"]:
@@ -618,6 +647,17 @@ def make_status_conversational(status_output):
                     health = "GOOD"
                 elif part_upper in ["BAD", "UNHEALTHY", "ERROR", "FAILED"]:
                     health = "BAD"
+                    
+            # Also check the full line for running status with PID pattern like "running [48605]"
+            if "RUNNING" in line_upper or ("[" in line_upper and "]" in line_upper and "RUNNING" not in line_upper):
+                status = "RUNNING"
+                has_status_column = True
+                
+            # Check for health status in the full line
+            if "GOOD" in line_upper:
+                health = "GOOD"
+            elif "BAD" in line_upper:
+                health = "BAD"
             
             # If no explicit status found, make reasonable assumptions
             if not has_status_column:
@@ -691,27 +731,27 @@ def make_status_conversational(status_output):
     if agent_count == 1:
         agent = agents[0]
         if agent['status'] == "RUNNING":
-            return f"I have one {agent['type']} agent running (UUID: {agent['uuid']}) - it's working great! 🚀"
+            return f"Got one {agent['type']} agent humming along nicely (ID: {agent['uuid']}) - everything's good! 🚀"
         elif agent['status'] == "INSTALLED":
-            return f"I have one {agent['type']} agent installed (UUID: {agent['uuid']}) but I can't tell if it's running. Want me to check the detailed status?"
+            return f"I've got a {agent['type']} agent sitting here (ID: {agent['uuid']}) but it's just chilling - not sure if it's actually doing anything. Want me to poke it and see?"
         else:
-            return f"I have one {agent['type']} agent (UUID: {agent['uuid']}) but it appears to be stopped. Want me to start it?"
+            return f"There's a {agent['type']} agent here (ID: {agent['uuid']}) but it looks like it's taking a nap. Should I wake it up?"
     
     # Multiple agents
     if running_count == 0 and not_running_count == agent_count:
-        return f"I have {agent_count} agents installed ({agent_list}) but none appear to be running. Should I start them?"
+        return f"I've got {agent_count} agents hanging around ({agent_list}) but they're all just sitting there doing nothing. Want me to get them moving?"
     elif running_count == agent_count:
         if bad_health_count > 0:
-            return f"I've got {agent_count} agents running ({agent_list}), but {bad_health_count} seem to be having issues. Want me to check what's wrong?"
+            return f"All {agent_count} agents are trying to work ({agent_list}), but {bad_health_count} of them seem a bit under the weather. Should I check what's bugging them?"
         else:
-            return f"All {agent_count} agents are running great! ({agent_list}) Everything's humming along nicely! ✨"
+            return f"Sweet! All {agent_count} agents are cranking away perfectly ({agent_list}) - everything's running like a dream! ✨"
     elif running_count > 0:
-        return f"I have {agent_count} agents ({agent_list}) - {running_count} running and {not_running_count} stopped. The running ones are working fine!"
+        return f"I've got {agent_count} agents total ({agent_list}) - {running_count} are busy working and {not_running_count} are taking a break. The active ones are doing great though!"
     else:
-        return f"I have {agent_count} agents ({agent_list}) installed, but I'm not sure about their current status. Want me to get more details?"
+        return f"There are {agent_count} agents here ({agent_list}) but honestly, I'm not totally sure what they're up to right now. Want me to investigate?"
 
 def make_status_readable(status_output):
-    """Convert vctl status output to more readable format."""
+    """Convert vctl status output to more readable format with emojis and better formatting."""
     if not status_output:
         return "No agents found"
     
@@ -720,18 +760,22 @@ def make_status_readable(status_output):
         return "No agent information available"
     
     # Check if this is the simple format or detailed format
-    if len(lines) == 1 and not "UUID" in lines[0]:
-        # Simple format: just agent info on one line
-        return f"📋 **Agent Status:**\n```\n{status_output}\n```"
+    # If we have a single line that looks like agent data (has multiple fields), parse it
+    if len(lines) == 1:
+        test_parts = lines[0].split()
+        # If it has at least 3 parts and first part could be UUID, treat as agent data
+        if len(test_parts) >= 3 and (test_parts[0].isdigit() or test_parts[0].isalnum()):
+            # This looks like agent data, process it as detailed format
+            pass  # Continue to detailed processing
+        elif "UUID" not in lines[0]:
+            # This is truly simple format
+            return f"📋 **Agent Status:**\n```\n{status_output}\n```"
     
     # Handle detailed format
     result_lines = []
     
-    # Create a cleaner header
-    result_lines.append("UUID   AGENT                             IDENTITY                     STATUS       HEALTH")
-    result_lines.append("====   =================================  ===========================  ===========  =======")
-    
     # Process each agent line
+    agent_count = 0
     for i, line in enumerate(lines):
         if not line.strip():
             continue
@@ -745,9 +789,10 @@ def make_status_readable(status_output):
         parts = clean_line.split()
         
         if len(parts) >= 3:  # UUID, AGENT, IDENTITY at minimum
-            uuid = parts[0][:6]  # Limit UUID to 6 chars for display
-            agent = parts[1][:32] if len(parts) > 1 else ""  # Agent name
-            identity = parts[2][:27] if len(parts) > 2 else ""  # Identity
+            agent_count += 1
+            uuid = parts[0]
+            agent = parts[1]
+            identity = parts[2]
             
             # Look for status and health in remaining parts
             remaining_parts = parts[3:] if len(parts) > 3 else []
@@ -757,10 +802,12 @@ def make_status_readable(status_output):
             health = "UNKNOWN"
             
             # Try to extract status and health from remaining parts
+            full_line = ' '.join(parts).upper()  # Check the entire line for keywords
             if remaining_parts:
                 for part in remaining_parts:
                     part_upper = part.upper()
-                    if part_upper in ["RUNNING", "STARTED", "ACTIVE", "ENABLED"]:
+                    # Check for running status - could be "running" or contain "[PID]"
+                    if part_upper in ["RUNNING", "STARTED", "ACTIVE", "ENABLED"] or "RUNNING" in part_upper:
                         status = "RUNNING"
                     elif part_upper in ["STOPPED", "DISABLED", "INACTIVE", "EXITED"]:
                         status = "STOPPED"
@@ -768,17 +815,60 @@ def make_status_readable(status_output):
                         health = "GOOD"
                     elif part_upper in ["BAD", "UNHEALTHY", "ERROR", "FAILED"]:
                         health = "BAD"
+                        
+            # Also check if the line contains "running [PID]" pattern
+            if "RUNNING" in full_line or "[" in full_line and "]" in full_line:
+                status = "RUNNING"
+                
+            # Check for GOOD status which might come after the PID
+            if "GOOD" in full_line:
+                health = "GOOD"
             
-            # Format the line with consistent spacing
-            formatted_line = f"{uuid:<6} {agent:<32} {identity:<27} {status:<11} {health}"
-            result_lines.append(formatted_line)
-        else:
-            # If we can't parse it properly, show the original line with a note
-            result_lines.append(f"       {line.strip()}")
+            # Status emoji
+            if status == "RUNNING":
+                status_emoji = "🟢"
+            elif status == "INSTALLED":
+                status_emoji = "⏸️"
+            else:
+                status_emoji = "🔴"
+            
+            # Health emoji
+            if health == "GOOD":
+                health_emoji = "💚"
+            elif health == "UNKNOWN":
+                health_emoji = "❓"
+            else:
+                health_emoji = "💔"
+            
+            # Format agent entry with casual, conversational tone
+            agent_name = agent.replace('volttron-', '').replace('-0.2.0rc0', '').title()
+            
+            if status == "RUNNING":
+                status_text = "up and running"
+            elif status == "INSTALLED":
+                status_text = "chilling (not started yet)"
+            else:
+                status_text = "having issues"
+            
+            if health == "GOOD":
+                health_text = "feeling great"
+            elif health == "UNKNOWN":
+                health_text = "can't tell how it's doing"
+            else:
+                health_text = "not feeling well"
+            
+            result_lines.append(f"{status_emoji} **{agent_name}** (ID: {uuid}) - {status_text}")
+            result_lines.append(f"   • Goes by: *{identity}*")
+            result_lines.append(f"   • Health check: {health_text} {health_emoji}")
+            result_lines.append("")  # Empty line for spacing
     
     # If no agents were properly parsed, show the raw output with formatting
-    if len(result_lines) <= 2:  # Only header lines
+    if agent_count == 0:
         return f"📋 **Agent Status (Raw Output):**\n```\n{status_output}\n```\n\n💡 **Note:** The output format may be non-standard. Try running 'vctl status' directly for more details."
+    
+    # Remove last empty line and return
+    if result_lines and result_lines[-1] == "":
+        result_lines.pop()
     
     return '\n'.join(result_lines)
 
@@ -896,6 +986,17 @@ def vctl_start_agent(agent_uuid_or_tag):
         if not agent_uuid_or_tag:
             return "❌ Please specify an agent UUID or tag to start. Use 'vctl status' to see available agents."
         
+        # Check if VOLTTRON is running before trying to start agent
+        if not is_volttron_running_quick():
+            return """❌ **VOLTTRON is not running!**
+
+**Cannot start agent** - VOLTTRON platform must be running first.
+
+💡 **Please try this:**
+1. Ask me to "start volttron" first
+2. Wait a few seconds for it to start up
+3. Then try starting the agent again"""
+        
         # Set environment variables
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
@@ -928,6 +1029,14 @@ def vctl_stop_agent(agent_uuid_or_tag):
         
         if not agent_uuid_or_tag:
             return "❌ Please specify an agent UUID or tag to stop. Use 'vctl status' to see running agents."
+        
+        # Check if VOLTTRON is running before trying to stop agent
+        if not is_volttron_running_quick():
+            return """❌ **VOLTTRON is not running!**
+
+**Cannot stop agent** - VOLTTRON platform must be running to manage agents.
+
+💡 **If VOLTTRON is stopped, the agents are already stopped too.**"""
         
         # Set environment variables
         env = os.environ.copy()
@@ -1617,6 +1726,120 @@ def find_pip_command():
             return path
     
     # Try to find pip in PATH
+
+def pip_uninstall_package(package_name, force=False):
+    """Uninstall a Python package using pip with casual conversational output.
+    
+    Args:
+        package_name (str): Name of the package to uninstall
+        force (bool): If True, skip confirmation prompts
+    
+    Returns:
+        str: Casual, conversational status message
+    """
+    try:
+        pip_cmd = find_pip_command()
+        
+        if not pip_cmd:
+            return "❌ Hmm, can't find pip anywhere. Are you in the right environment?"
+        
+        if not package_name or not package_name.strip():
+            return "❌ You need to tell me which package to uninstall! Like 'volttron-listener' or something."
+        
+        package_name = package_name.strip()
+        
+        # Set up environment
+        env = os.environ.copy()
+        if 'VIRTUAL_ENV' in os.environ:
+            env["PATH"] = f"{os.path.join(os.environ['VIRTUAL_ENV'], 'bin')}:{env['PATH']}"
+        
+        # First check if the package is actually installed
+        check_result = subprocess.run([
+            pip_cmd, "show", package_name
+        ], capture_output=True, text=True, timeout=10, env=env)
+        
+        if check_result.returncode != 0:
+            return f"🤷 Package '{package_name}' doesn't seem to be installed anyway, so... mission accomplished? 😅"
+        
+        # Build the uninstall command
+        uninstall_cmd = [pip_cmd, "uninstall"]
+        
+        if force:
+            uninstall_cmd.append("-y")  # Auto-confirm
+        
+        uninstall_cmd.append(package_name)
+        
+        # Run the uninstall
+        result = subprocess.run(
+            uninstall_cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env
+        )
+        
+        if result.returncode == 0:
+            # Success!
+            return f"🎉 Boom! Successfully kicked '{package_name}' out of the system. It's gone! 👋"
+        else:
+            # Something went wrong
+            error_output = result.stderr or result.stdout or "No error details available"
+            
+            # Try to make sense of common errors
+            if "not installed" in error_output.lower():
+                return f"🤔 Weird... '{package_name}' wasn't actually installed. Maybe it was already removed?"
+            elif "permission" in error_output.lower() or "denied" in error_output.lower():
+                return f"🔒 Permission denied trying to uninstall '{package_name}'. Try running as admin or check your environment permissions."
+            elif "dependency" in error_output.lower():
+                return f"⚠️ Can't remove '{package_name}' because other packages depend on it. You might need to remove those first."
+            else:
+                return f"❌ Something went sideways uninstalling '{package_name}':\n{error_output}"
+                
+    except subprocess.TimeoutExpired:
+        return f"⏱️ Timeout! Uninstalling '{package_name}' is taking way too long. Something might be stuck."
+    except Exception as e:
+        return f"💥 Unexpected error trying to uninstall '{package_name}': {str(e)}"
+
+def pip_list_packages():
+    """List all installed packages in a casual, readable format."""
+    try:
+        pip_cmd = find_pip_command()
+        
+        if not pip_cmd:
+            return "❌ Can't find pip to check what's installed."
+        
+        # Set up environment
+        env = os.environ.copy()
+        if 'VIRTUAL_ENV' in os.environ:
+            env["PATH"] = f"{os.path.join(os.environ['VIRTUAL_ENV'], 'bin')}:{env['PATH']}"
+        
+        # Get package list
+        result = subprocess.run([
+            pip_cmd, "list"
+        ], capture_output=True, text=True, timeout=30, env=env)
+        
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if not output:
+                return "🤷 No packages installed... that's weird."
+            
+            lines = output.split('\n')
+            if len(lines) <= 2:  # Just headers
+                return "📦 No packages found (just pip itself probably)."
+            
+            # Count packages (skip header lines)
+            package_lines = [line for line in lines[2:] if line.strip()]
+            package_count = len(package_lines)
+            
+            return f"📦 **Found {package_count} installed packages:**\n\n```\n{output}\n```"
+        else:
+            error_output = result.stderr or result.stdout or "Unknown error"
+            return f"❌ Error getting package list: {error_output}"
+            
+    except subprocess.TimeoutExpired:
+        return "⏱️ Timeout getting package list - that's taking unusually long."
+    except Exception as e:
+        return f"💥 Error checking installed packages: {str(e)}"
     pip_cmd = shutil.which("pip")
     if pip_cmd:
         return pip_cmd
@@ -2292,15 +2515,33 @@ This usually means your VOLTTRON installation is incomplete. Try reinstalling VO
 def vctl_install_platform_driver():
     """Install the VOLTTRON platform driver agent."""
     vctl_cmd = find_vctl_command()
+    volttron_home = get_volttron_home()
     
     if not vctl_cmd:
-        return "❌ vctl command not found. Please ensure VOLTTRON is installed and accessible."
+        return check_volttron_installation()
+    
+    # Check if VOLTTRON is running before trying to install
+    if not is_volttron_running_quick():
+        return """❌ **VOLTTRON is not running!**
+
+**Cannot install platform driver agent** - VOLTTRON platform must be running first.
+
+💡 **Please try this:**
+1. Ask me to "start volttron" first
+2. Wait a few seconds for it to start up
+3. Then try installing the platform driver again
+
+**Why this matters:** Agent installation requires an active VOLTTRON platform to register and configure the agent properly."""
     
     try:
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
         # First check if it's already installed
         status_result = subprocess.run([
             vctl_cmd, "status"
-        ], capture_output=True, text=True, timeout=30)
+        ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
         
         # Format any system warnings
         warning_msg = format_volttron_warnings(status_result.stderr)

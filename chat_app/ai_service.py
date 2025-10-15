@@ -21,7 +21,8 @@ from .volttron_commands import (
     store_fake_driver_config, setup_fake_driver_monitoring, subscribe_to_fake_data,
     show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
-    vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip
+    vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
+    pip_uninstall_package, pip_list_packages
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -170,6 +171,20 @@ if agent:
     def install_volttron_tool() -> str:
         """Install VOLTTRON using pip and set up the environment."""
         return install_volttron_with_pip()
+
+    @agent.tool_plain
+    def pip_uninstall_tool(package_name: str) -> str:
+        """Uninstall a Python package using pip.
+        
+        Args:
+            package_name: The name of the package to uninstall (e.g., 'volttron-listener')
+        """
+        return pip_uninstall_package(package_name, force=True)
+
+    @agent.tool_plain
+    def pip_list_tool() -> str:
+        """List all installed Python packages."""
+        return pip_list_packages()
 
 class AIService:
     """Service for handling AI model interactions with function tools support."""
@@ -378,6 +393,35 @@ class AIService:
                 "schema": {
                     "name": "install_volttron_with_pip",
                     "description": "Install VOLTTRON using pip and set up the environment",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "pip_uninstall": {
+                "function": pip_uninstall_package,
+                "schema": {
+                    "name": "pip_uninstall",
+                    "description": "Uninstall a Python package using pip",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "package_name": {
+                                "type": "string",
+                                "description": "The name of the package to uninstall (e.g., 'volttron-listener')"
+                            }
+                        },
+                        "required": ["package_name"]
+                    }
+                }
+            },
+            "pip_list": {
+                "function": pip_list_packages,
+                "schema": {
+                    "name": "pip_list",
+                    "description": "List all installed Python packages",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -1544,8 +1588,11 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             'is anything running', 'what is running', 'is volttron running', 
             'anything running', 'is running', 'running status'
         ]):
-            # For "what is running", show actual status, not just Yes/No
-            if 'what is running' in message_lower or 'what\'s running' in message_lower:
+            # For detailed questions about what's running, show full status
+            if any(phrase in message_lower for phrase in [
+                'what is running', 'what\'s running', 'inform me what running',
+                'what running', 'show me what running', 'tell me what running'
+            ]):
                 return self.call_function_tool("vctl_status", {})
             else:
                 # For simple yes/no questions
@@ -1629,6 +1676,28 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
                 agent_id = match.group(1)
                 if agent_id and agent_id not in ['agent', 'the', 'platform']:
                     return self.call_function_tool("vctl_uninstall_agent", {"agent_uuid_or_tag": agent_id})
+        
+        # Pattern matching for pip uninstall commands
+        pip_uninstall_patterns = [
+            r'pip\s+uninstall\s+(\S+)',
+            r'uninstall\s+package\s+(\S+)',
+            r'remove\s+package\s+(\S+)',
+            r'pip\s+remove\s+(\S+)'
+        ]
+        
+        for pattern in pip_uninstall_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                package_name = match.group(1)
+                if package_name and package_name not in ['package', 'the']:
+                    return self.call_function_tool("pip_uninstall", {"package_name": package_name})
+        
+        # Pattern matching for pip list commands
+        if any(phrase in message_lower for phrase in [
+            'pip list', 'list packages', 'show packages', 'what packages', 'pip show',
+            'installed packages', 'list installed'
+        ]):
+            return self.call_function_tool("pip_list", {})
         
         # Pattern matching for start/stop agent commands
         start_patterns = [
