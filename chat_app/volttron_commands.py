@@ -200,19 +200,15 @@ def get_volttron_env_path():
 
 def get_volttron_home():
     """Get the VOLTTRON_HOME directory."""
-    # Always prefer the project-specific VOLTTRON_HOME for consistency
-    preferred_home = "/home/igorj/volttron/volttron_home"
-    
     # Check if VOLTTRON_HOME is explicitly set in environment first
     env_volttron_home = os.getenv("VOLTTRON_HOME")
-    if env_volttron_home and env_volttron_home != os.path.expanduser("~/.volttron"):
-        # Use explicit environment setting unless it's the default ~/.volttron
+    if env_volttron_home:
         return env_volttron_home
     
-    # Create and use our preferred directory
-    os.makedirs(preferred_home, exist_ok=True)
-    return preferred_home
-    return os.path.expanduser("~/.volttron")
+    # Use the standard VOLTTRON home directory (matches pip installation default)
+    default_volttron_home = os.path.expanduser("~/.volttron")
+    os.makedirs(default_volttron_home, exist_ok=True)
+    return default_volttron_home
 
 def check_volttron_environment():
     """Check and setup VOLTTRON environment variables."""
