@@ -1147,52 +1147,22 @@ Please specify which agent to uninstall. Examples:
     def _get_volttron_system_prompt(self):
         """Get the system prompt for VOLTTRON AI assistant."""
         return (
-            "You are VOLTTRON AI Assistant, an intelligent assistant for VOLTTRON platform operations. "
-            "You have access to comprehensive VOLTTRON management tools through function calls using the @agent.tool_plain decorator pattern. "
-            "\n\nCOMPREHENSIVE TOOL CAPABILITIES:\n"
-            "🏗️ PLATFORM CONTROL:\n"
-            "- start_volttron_tool: Start the VOLTTRON platform\n"
-            "- stop_volttron_tool: Stop the VOLTTRON platform\n"
-            "- check_volttron_installation_tool: Verify VOLTTRON installation\n"
-            "- kill_existing_processes_tool: Clean up existing VOLTTRON processes\n"
-            "\n🔍 STATUS & MONITORING:\n"
-            "- check_volttron_status_tool: Check platform status with logs\n"
-            "- get_vctl_status_tool: Get detailed vctl status\n"
-            "- vctl_status_detailed_tool: Get comprehensive status information\n"
-            "- vctl_health_tool: Check platform health\n"
-            "- show_recent_logs_tool: Show recent VOLTTRON logs\n"
-            "\n🤖 AGENT MANAGEMENT:\n"
-            "- list_agents_tool: List all installed agents\n"
-            "- list_available_agents_tool: Show available agents for installation\n"
-            "- install_agent_tool: Install agents by name\n"
-            "- start_agent_tool: Start agents by UUID\n"
-            "- stop_agent_tool: Stop agents by UUID\n"
-            "- uninstall_agent_tool: Completely uninstall agents\n"
-            "- verify_agent_uninstalled_tool: Verify agent removal\n"
-            "\n🔧 SPECIALIZED INSTALLATIONS:\n"
-            "- install_platform_driver_tool: Install platform driver\n"
-            "- install_listener_agent_tool: Install listener agent\n"
-            "- uninstall_all_listeners_tool: Remove all listener agents\n"
-            "\n🧪 DEVELOPMENT & TESTING:\n"
-            "- install_fake_driver_library_tool: Install fake driver for testing\n"
-            "- create_fake_driver_config_tool: Create fake driver configuration\n"
-            "- store_fake_driver_config_tool: Store fake driver config\n"
-            "- setup_fake_driver_monitoring_tool: Set up fake data monitoring\n"
-            "- subscribe_to_fake_data_tool: Subscribe to fake sensor data\n"
-            "\n📚 HELP & GUIDANCE:\n"
-            "- get_volttron_help_tool: Get detailed installation help\n"
-            "- get_volttron_next_steps_tool: Get suggested next steps\n"
-            "- show_formatting_test_tool: Test output formatting\n"
-            "\n📋 USAGE GUIDELINES:\n"
-            "✅ ALWAYS use the function tools to perform VOLTTRON operations\n"
-            "✅ Execute commands rather than just providing instructions\n"
-            "✅ Check actual status and provide real-time information\n"
-            "✅ Use comprehensive verification tools when requested\n"
-            "✅ Provide step-by-step guidance using actual tool execution\n"
-            "\n🎯 PYDANTIC AI PATTERN:\n"
-            "All tools are registered using @agent.tool_plain decorators for seamless AI integration. "
-            "The AI automatically determines which tools to call based on user requests and provides "
-            "comprehensive VOLTTRON platform management capabilities."
+            "You are a VOLTTRON AI Assistant. Be extremely concise and direct.\n\n"
+            "RESPONSE STYLE:\n"
+            "- Keep responses SHORT (1-2 sentences max)\n"
+            "- NO detailed explanations unless asked\n"
+            "- NO numbered lists unless requested\n" 
+            "- NO \"I'll do X for you\" - just do it\n"
+            "- NO progress reports - just show final status\n\n"
+            "TOOLS AVAILABLE:\n"
+            "- start_volttron_tool: Start VOLTTRON\n"
+            "- stop_volttron_tool: Stop VOLTTRON\n"
+            "- check_volttron_status_tool: Check status\n"
+            "- vctl_status: Get agent status\n"
+            "- install_listener_agent_tool: Install listener\n"
+            "- list_agents_tool: List agents\n"
+            "- And other VOLTTRON management tools\n\n"
+            "EXECUTE COMMANDS DIRECTLY - don't explain what you'll do, just do it and report the result briefly."
         )
 
     def _setup_agent(self):
@@ -1473,7 +1443,9 @@ Please specify which agent to uninstall. Examples:
                 r"vctl\s+status": "vctl_status",
                 r"check.*status": "vctl_status", 
                 r"start.*volttron": "start_volttron",
+                r"start.*volltron": "start_volttron",  # Handle common misspelling
                 r"stop.*volttron": "stop_volttron",
+                r"stop.*volltron": "stop_volttron",   # Handle common misspelling
                 r"list.*agents": "vctl_list_agents",
                 r"install.*driver": "install_fake_driver_library",
                 r"install.*agent": "vctl_install_listener_agent",
@@ -1493,13 +1465,43 @@ Please specify which agent to uninstall. Examples:
                             # Get the actual function from the function tools registry
                             func = self.function_tools[function_name]["function"]
                             result = func()
-                            executed_commands.append(f"\n📋 {function_name}:\n{result}")
+                            
+                            # Super minimal output - only show essential status
+                            if "start_volttron" in function_name:
+                                # After starting, check if it's actually running
+                                try:
+                                    import time
+                                    time.sleep(2)  # Wait a moment for startup
+                                    status_func = self.function_tools.get("check_volttron_status", {}).get("function")
+                                    if status_func:
+                                        status_result = status_func()
+                                        if "running" in status_result.lower() and "✅" in status_result:
+                                            executed_commands.append("\n✅ VOLTTRON started and running")
+                                        else:
+                                            executed_commands.append("\n❌ VOLTTRON failed to start (likely configuration or permission issue)")
+                                    else:
+                                        executed_commands.append("\n✅ VOLTTRON start command completed")
+                                except:
+                                    executed_commands.append("\n❌ VOLTTRON startup verification failed")
+                                    
+                            elif "check_volttron_status" in function_name:
+                                # Only show for explicit status checks, not automatic ones
+                                if "is.*running" in text_to_check or "status" in user_message.lower():
+                                    if "running" in result.lower() and "✅" in result:
+                                        executed_commands.append("\n✅ Running")
+                                    else:
+                                        executed_commands.append("\n❌ Not running")
+                                        
+                            # Don't show output for other commands unless there's an error
+                            elif "❌" in result or "Error" in result or "failed" in result.lower():
+                                executed_commands.append(f"\n❌ {function_name} failed")
+                                
                     except Exception as e:
-                        executed_commands.append(f"\n❌ Error executing {function_name}: {e}")
+                        executed_commands.append(f"\n❌ {function_name} error")
             
-            # Append command results to AI response
+            # Append minimal status to AI response
             if executed_commands:
-                ai_response += "\n\n🤖 **Command Execution Results:**" + "".join(executed_commands)
+                ai_response += "".join(executed_commands)
             
             return ai_response
             
@@ -1537,16 +1539,35 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         """Handle direct VOLTTRON commands without AI processing."""
         message_lower = message.lower().strip()
         
+        # Simple running status questions
+        if any(phrase in message_lower for phrase in [
+            'is anything running', 'what is running', 'is volttron running', 
+            'anything running', 'is running', 'running status'
+        ]):
+            # For "what is running", show actual status, not just Yes/No
+            if 'what is running' in message_lower or 'what\'s running' in message_lower:
+                return self.call_function_tool("vctl_status", {})
+            else:
+                # For simple yes/no questions
+                from chat_app.volttron_commands import is_volttron_running
+                return is_volttron_running()
+        
         # Status commands
         if message_lower in ['status', 'vctl status', 'agent status', 'check status']:
             return self.call_function_tool("vctl_status", {})
         elif message_lower in ['volttron status', 'platform status', 'check volttron']:
             return self.call_function_tool("check_volttron_status", {})
         
-        # Start/Stop commands
-        elif message_lower in ['start volttron', 'start platform']:
+        # Start/Stop commands with better spelling handling
+        if any(phrase in message_lower for phrase in [
+            'start volttron', 'start volltron', 'start volltrron', 'start voltrron',
+            'start voltron', 'start platform', 'launch volttron', 'launch volltron'
+        ]):
             return self.call_function_tool("start_volttron", {})
-        elif message_lower in ['stop volttron', 'stop platform']:
+        elif any(phrase in message_lower for phrase in [
+            'stop volttron', 'stop volltron', 'stop volltrron', 'stop voltrron',
+            'stop voltron', 'stop platform', 'shutdown volttron', 'shutdown volltron'
+        ]):
             return self.call_function_tool("stop_volttron", {})
         
         # Install commands
@@ -1619,7 +1640,9 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                if agent_id and agent_id not in ['agent', 'volttron', 'platform']:
+                # Exclude VOLTTRON platform variations and common misspellings
+                volttron_variations = ['agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform']
+                if agent_id and agent_id not in volttron_variations:
                     return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": agent_id})
         
         stop_patterns = [

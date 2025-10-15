@@ -109,17 +109,17 @@ def format_volttron_warnings(stderr_output):
     return ""
 
 def find_volttron_command():
-    """Find volttron command in various locations."""
-    # First, check the current project's virtual environment
+    """Find volttron command in various locations, preferring fresh installation."""
+    # First, check for fresh VOLTTRON installation
+    fresh_volttron = os.path.expanduser("~/volttron-fresh/venv-fresh/bin/volttron")
+    if os.path.exists(fresh_volttron):
+        return fresh_volttron
+    
+    # Second, check the current project's virtual environment
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_env_volttron = os.path.join(os.path.dirname(current_dir), "env", "bin", "volttron")
     if os.path.exists(project_env_volttron):
         return project_env_volttron
-    
-    # Second, check the known working VOLTTRON environment
-    volttron_env_path = "/home/igor/Work/Volttron_eclispe/env/bin/volttron"
-    if os.path.exists(volttron_env_path):
-        return volttron_env_path
     
     # Third, check if it's in PATH
     volttron_cmd = shutil.which("volttron")
@@ -155,17 +155,17 @@ def find_volttron_command():
     return None
 
 def find_vctl_command():
-    """Find vctl command in various locations."""
-    # First, check the current project's virtual environment
+    """Find vctl command in various locations, preferring fresh installation."""
+    # First, check for fresh VOLTTRON installation
+    fresh_vctl = os.path.expanduser("~/volttron-fresh/venv-fresh/bin/vctl")
+    if os.path.exists(fresh_vctl):
+        return fresh_vctl
+    
+    # Second, check the current project's virtual environment
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_env_vctl = os.path.join(os.path.dirname(current_dir), "env", "bin", "vctl")
     if os.path.exists(project_env_vctl):
         return project_env_vctl
-    
-    # Second, check the known working VOLTTRON environment
-    vctl_env_path = "/home/igor/Work/Volttron_eclispe/env/bin/vctl"
-    if os.path.exists(vctl_env_path):
-        return vctl_env_path
     
     # Third, check if it's in PATH
     vctl_cmd = shutil.which("vctl")
@@ -199,11 +199,16 @@ def get_volttron_env_path():
     return None
 
 def get_volttron_home():
-    """Get the VOLTTRON_HOME directory."""
+    """Get the VOLTTRON_HOME directory, preferring fresh installation if available."""
     # Check if VOLTTRON_HOME is explicitly set in environment first
     env_volttron_home = os.getenv("VOLTTRON_HOME")
     if env_volttron_home:
         return env_volttron_home
+    
+    # Check for fresh VOLTTRON installation
+    fresh_volttron_home = os.path.expanduser("~/volttron-fresh/volttron_home")
+    if os.path.exists(fresh_volttron_home):
+        return fresh_volttron_home
     
     # Use the standard VOLTTRON home directory (matches pip installation default)
     default_volttron_home = os.path.expanduser("~/.volttron")
@@ -243,43 +248,127 @@ Environment is properly configured!
 """
 
 def kill_existing_volttron_processes():
-    """Kill any existing VOLTTRON processes to prevent conflicts."""
+    """Kill any existing VOLTTRON processes to prevent conflicts - ensures only one VOLTTRON runs at a time."""
+    killed_pids = []
+    messages = []
+    
     try:
-        # Find all VOLTTRON processes (be specific to avoid catching unrelated processes)
-        result = subprocess.run(
-            ["pgrep", "-f", "bin/volttron"],
-            capture_output=True, text=True, timeout=10
-        )
+        # Method 1: Find VOLTTRON processes using multiple patterns to catch all variants
+        search_patterns = [
+            "bin/volttron",           # Standard VOLTTRON binary
+            "python.*volttron",       # Python-launched VOLTTRON
+            "volttron.*-vv",          # VOLTTRON with verbose flags
+            "volttron.*platform"      # VOLTTRON platform processes
+        ]
         
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().split('\n')
-            killed_pids = []
+        all_found_pids = set()
+        
+        for pattern in search_patterns:
+            try:
+                result = subprocess.run(
+                    ["pgrep", "-f", pattern],
+                    capture_output=True, text=True, timeout=10
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    pids = result.stdout.strip().split('\n')
+                    all_found_pids.update(pids)
+                    
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                continue
+        
+        # Method 2: Also check for processes using VOLTTRON_HOME
+        try:
+            volttron_home = get_volttron_home()
+            ps_result = subprocess.run(
+                ["ps", "aux"],
+                capture_output=True, text=True, timeout=10
+            )
             
-            for pid in pids:
+            if ps_result.returncode == 0:
+                for line in ps_result.stdout.split('\n'):
+                    if ('volttron' in line.lower() and 
+                        (volttron_home in line or 'VOLTTRON_HOME' in line)):
+                        # Extract PID (second column in ps aux output)
+                        parts = line.split()
+                        if len(parts) > 1 and parts[1].isdigit():
+                            all_found_pids.add(parts[1])
+                            
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+        
+        # Remove our own PID to avoid killing ourselves
+        current_pid = str(os.getpid())
+        all_found_pids.discard(current_pid)
+        
+        if all_found_pids:
+            messages.append(f"🔍 Found {len(all_found_pids)} VOLTTRON process(es) to terminate")
+            
+            # Kill processes with escalating force
+            for pid in all_found_pids:
                 try:
-                    # Try to kill the process gracefully first
-                    subprocess.run(["kill", "-TERM", pid], check=True, timeout=5)
-                    killed_pids.append(pid)
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    # First verify the process still exists
+                    check_result = subprocess.run(
+                        ["kill", "-0", pid], 
+                        capture_output=True, timeout=2
+                    )
+                    
+                    if check_result.returncode != 0:
+                        continue  # Process already dead
+                    
+                    # Try graceful termination first (SIGTERM)
                     try:
-                        # Force kill if graceful kill doesn't work
-                        subprocess.run(["kill", "-KILL", pid], check=True, timeout=5)
-                        killed_pids.append(f"{pid} (force)")
+                        subprocess.run(["kill", "-TERM", pid], check=True, timeout=3)
+                        # Wait a moment for graceful shutdown
+                        import time
+                        time.sleep(1)
+                        
+                        # Check if process is still alive
+                        check_again = subprocess.run(
+                            ["kill", "-0", pid], 
+                            capture_output=True, timeout=2
+                        )
+                        
+                        if check_again.returncode == 0:
+                            # Still alive, force kill (SIGKILL)
+                            subprocess.run(["kill", "-KILL", pid], check=True, timeout=3)
+                            killed_pids.append(f"{pid} (forced)")
+                        else:
+                            killed_pids.append(f"{pid} (graceful)")
+                            
                     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                        pass
+                        try:
+                            # Force kill as last resort
+                            subprocess.run(["kill", "-KILL", pid], check=True, timeout=3)
+                            killed_pids.append(f"{pid} (force-kill)")
+                        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                            messages.append(f"⚠️ Could not kill PID {pid}")
+                            
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    continue
             
             if killed_pids:
-                return f"🔄 Stopped existing VOLTTRON processes: PIDs {', '.join(killed_pids)}"
+                messages.append(f"🔄 Successfully terminated VOLTTRON processes: PIDs {', '.join(killed_pids)}")
+                messages.append("✅ System is now ready for a clean VOLTTRON start")
             else:
-                return "⚠️ Found VOLTTRON processes but couldn't stop them"
+                messages.append("⚠️ Found VOLTTRON processes but couldn't terminate them")
+                
         else:
-            return ""  # No processes found, which is good
+            messages.append("✅ No existing VOLTTRON processes found - clean start possible")
+            
+        return "\n".join(messages) if messages else ""
             
     except Exception as e:
-        return f"⚠️ Error checking for existing VOLTTRON processes: {str(e)}"
+        return f"⚠️ Error checking/killing VOLTTRON processes: {str(e)}"
 
 def start_volttron():
-    """Start volttron in the background using the correct virtual environment."""
+    """Start volttron in the background using the correct virtual environment.
+    
+    This function ensures only one VOLTTRON instance runs at a time by:
+    1. Killing all existing VOLTTRON processes first
+    2. Waiting for proper cleanup
+    3. Starting a fresh VOLTTRON instance
+    """
     try:
         volttron_cmd = find_volttron_command()
         volttron_home = get_volttron_home()
@@ -288,8 +377,13 @@ def start_volttron():
         if not volttron_cmd:
             return check_volttron_installation()
         
-        # Kill any existing VOLTTRON processes to prevent conflicts
+        messages = []
+        messages.append("🚀 Starting VOLTTRON with clean process management...")
+        
+        # Kill any existing VOLTTRON processes to ensure only one runs at a time
         cleanup_msg = kill_existing_volttron_processes()
+        if cleanup_msg:
+            messages.append(cleanup_msg)
         
         # Set environment variables for VOLTTRON
         env = os.environ.copy()
@@ -298,24 +392,54 @@ def start_volttron():
         # Create VOLTTRON_HOME directory if it doesn't exist
         os.makedirs(volttron_home, exist_ok=True)
         
-        # Wait a moment for processes to fully terminate
-        if cleanup_msg:
-            import time
-            time.sleep(2)
+        # Wait for processes to fully terminate and system to stabilize
+        import time
+        if cleanup_msg and ("terminated" in cleanup_msg or "killed" in cleanup_msg):
+            messages.append("⏳ Waiting for system cleanup to complete...")
+            time.sleep(3)  # Give more time for proper cleanup
         
-        # Start volttron in the background
-        process = subprocess.Popen(
-            [volttron_cmd, "-vv", "-l", "volttron.log"], 
+        # Start volttron as a detached background daemon process
+        messages.append("🔧 Launching new VOLTTRON instance...")
+        
+        # Use nohup and shell redirection to make VOLTTRON truly independent
+        cmd = f"cd {volttron_home} && nohup {volttron_cmd} -vv -l volttron.log > volttron_output.log 2>&1 &"
+        
+        # Start the process detached from this process
+        result = subprocess.run(
+            cmd,
+            shell=True,
             env=env,
             cwd=volttron_home
         )
         
-        success_msg = f"✅ VOLTTRON started with PID {process.pid} (VOLTTRON_HOME: {volttron_home})"
+        # Wait for process to start and verify it's running
+        messages.append("⏳ Waiting for VOLTTRON to initialize...")
+        time.sleep(3)  # Give VOLTTRON time to start
         
-        if cleanup_msg:
-            return f"{cleanup_msg}\n{success_msg}"
+        # Check if VOLTTRON is now running
+        is_running = wait_for_volttron_ready(max_wait_seconds=10)
+        if is_running:
+            # Get the PID of the running VOLTTRON process
+            try:
+                pid_result = subprocess.run(
+                    ["pgrep", "-f", "bin/volttron"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if pid_result.returncode == 0 and pid_result.stdout.strip():
+                    pid = pid_result.stdout.strip().split('\n')[0]
+                    messages.append(f"✅ VOLTTRON started successfully with PID {pid}")
+                else:
+                    messages.append("✅ VOLTTRON started successfully")
+            except:
+                messages.append("✅ VOLTTRON started successfully")
+                
+            messages.append(f"🏠 VOLTTRON_HOME: {volttron_home}")
+            messages.append("🔒 Only one VOLTTRON instance is now running")
         else:
-            return success_msg
+            messages.append("❌ VOLTTRON failed to start properly")
+            return "\n".join(messages)
+        
+        return "\n".join(messages)
             
     except Exception as e:
         return f"❌ Error starting VOLTTRON: {str(e)}"
@@ -663,16 +787,48 @@ def vctl_status_detailed():
     return vctl_status(explain=True)
 
 def check_volttron_status(brief=True):
-    """Check VOLTTRON status and show recent log entries."""
+    """Check VOLTTRON status with simple yes/no answer unless details requested."""
     try:
         vctl_cmd = find_vctl_command()
         volttron_home = get_volttron_home()
         
         if not vctl_cmd:
-            return check_volttron_installation()
+            return "❌ VOLTTRON not installed"
         
-        # First, check if VOLTTRON processes are actually running using the same method as start_volttron
-        # Be more specific to avoid catching our own python subprocess
+        # Use vctl status as the primary check since it's more reliable
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        try:
+            # Try vctl status with a short timeout
+            result = subprocess.run(
+                [vctl_cmd, "status"], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            # If vctl status works, VOLTTRON is running
+            if result.returncode == 0:
+                if brief:
+                    return "✅ VOLTTRON is running"
+                else:
+                    return f"✅ VOLTTRON is running\n\nStatus output:\n{result.stdout}"
+            else:
+                # vctl failed, check if it's a "not running" error
+                error_output = result.stderr or result.stdout or ""
+                if "not running" in error_output.lower():
+                    return "❌ VOLTTRON is not running"
+                else:
+                    return f"❌ VOLTTRON status check failed: {error_output}"
+                    
+        except subprocess.TimeoutExpired:
+            # If vctl hangs, try process check as fallback
+            pass
+        
+        # Fallback: check if VOLTTRON processes are actually running
         process_check = subprocess.run(
             ["pgrep", "-f", "bin/volttron"],
             capture_output=True, text=True, timeout=10
@@ -680,40 +836,20 @@ def check_volttron_status(brief=True):
         
         # If no VOLTTRON processes are running, it's definitely not running
         if process_check.returncode != 0 or not process_check.stdout.strip():
-            return "❌ VOLTTRON platform is not running."
-        
-        # VOLTTRON processes are running, now check with vctl status for detailed info
-        env = os.environ.copy()
-        env["VOLTTRON_HOME"] = volttron_home
-        
-        # Get status
-        result = subprocess.run(
-            [vctl_cmd, "status"], 
-            capture_output=True, 
-            text=True,
-            env=env,
-            cwd=volttron_home
-        )
-        
-        status_output = result.stdout or result.stderr or "No status output"
-        
-        if brief:
-            # VOLTTRON is running (we confirmed with pgrep), now check agent status
-            if result.returncode == 0:
-                if status_output.strip() and "No installed Agents found" not in status_output:
-                    return f"✅ VOLTTRON platform is running with agents active."
-                else:
-                    return f"🟡 VOLTTRON platform is running but no agents are installed."
-            else:
-                # Processes exist but vctl can't connect - could be starting up
-                pids = process_check.stdout.strip().split('\n')
-                return f"🟡 VOLTTRON platform is running (PID {', '.join(pids)}) but may still be initializing."
+            return "❌ VOLTTRON is not running"
         else:
-            # Show detailed status with logs
-            log_entries = read_volttron_log(5)  # Last 5 lines
-            return f"VOLTTRON Platform Status:\n{status_output}\n\nRecent Log Entries:\n{log_entries}"
+            return "✅ VOLTTRON is running (process found)"
+            
     except Exception as e:
-        return f"Error checking VOLTTRON status: {str(e)}"
+        return f"❌ Error checking VOLTTRON: {str(e)}"
+
+def is_volttron_running():
+    """Simple check: is VOLTTRON running? Returns just 'Yes' or 'No'."""
+    status = check_volttron_status(brief=True)
+    if "✅" in status and "running" in status:
+        return "Yes"
+    else:
+        return "No"
 
 def vctl_list_agents():
     """List all installed agents with their details."""
@@ -1223,6 +1359,51 @@ def verify_agent_uninstalled(agent_identifier):
     except Exception as e:
         return f"❌ Error during verification: {str(e)}"
 
+def wait_for_volttron_ready(max_wait_seconds=30):
+    """Wait for VOLTTRON to be fully ready for operations.
+    
+    Args:
+        max_wait_seconds: Maximum time to wait in seconds
+        
+    Returns:
+        tuple: (is_ready: bool, message: str)
+    """
+    import time
+    
+    vctl_cmd = find_vctl_command()
+    volttron_home = get_volttron_home()
+    
+    if not vctl_cmd:
+        return False, "❌ vctl command not found"
+    
+    start_time = time.time()
+    env = os.environ.copy()
+    env["VOLTTRON_HOME"] = volttron_home
+    
+    while time.time() - start_time < max_wait_seconds:
+        try:
+            # Test if vctl status works (indicating VOLTTRON is ready)
+            result = subprocess.run(
+                [vctl_cmd, "status"], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=5
+            )
+            
+            # If vctl status succeeds (regardless of output), VOLTTRON is ready
+            if result.returncode == 0:
+                return True, "✅ VOLTTRON is ready"
+                
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+            pass
+        
+        # Wait a bit before retrying
+        time.sleep(1)
+    
+    return False, f"❌ VOLTTRON not ready after {max_wait_seconds} seconds"
+
 def vctl_install_listener_agent():
     """Install the VOLTTRON listener agent for monitoring platform messages."""
     try:
@@ -1231,6 +1412,11 @@ def vctl_install_listener_agent():
         
         if not vctl_cmd:
             return check_volttron_installation()
+        
+        # Wait for VOLTTRON to be ready before attempting installation
+        is_ready, wait_message = wait_for_volttron_ready(max_wait_seconds=15)
+        if not is_ready:
+            return f"❌ Failed to install listener agent: {wait_message}\n\n💡 **Try this:**\n• Ask me to \"start volttron\" first\n• Wait a few seconds, then try installing again"
         
         # Set environment variables
         env = os.environ.copy()
@@ -1303,6 +1489,11 @@ def vctl_install_agent(agent_name):
         
         if not vctl_cmd:
             return check_volttron_installation()
+        
+        # Wait for VOLTTRON to be ready before attempting installation
+        is_ready, wait_message = wait_for_volttron_ready(max_wait_seconds=15)
+        if not is_ready:
+            return f"❌ Failed to install {agent_name} agent: {wait_message}\n\n💡 **Try this:**\n• Ask me to \"start volttron\" first\n• Wait a few seconds, then try installing again"
         
         # Set environment variables
         env = os.environ.copy()
