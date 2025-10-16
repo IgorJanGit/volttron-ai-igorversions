@@ -1001,6 +1001,60 @@ def vctl_start_agent(agent_uuid_or_tag):
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
+        # First, check if the agent actually exists by getting the current status
+        status_result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=10
+        )
+        
+        if status_result.returncode != 0:
+            return f"❌ Can't check agent status to verify '{agent_uuid_or_tag}' exists. VOLTTRON might not be responding properly."
+        
+        # Check if the agent UUID/tag exists in the status output
+        agent_found = False
+        agent_details = ""
+        
+        if status_result.stdout:
+            status_lines = status_result.stdout.strip().split('\n')
+            for line in status_lines:
+                if agent_uuid_or_tag in line:
+                    agent_found = True
+                    agent_details = line.strip()
+                    break
+        
+        if not agent_found:
+            # Show available agents for help
+            available_agents = []
+            if status_result.stdout:
+                for line in status_result.stdout.strip().split('\n'):
+                    if line and not 'UUID' in line and len(line.split()) >= 3:
+                        parts = line.split()
+                        if parts[0] and parts[0] != 'UUID':
+                            available_agents.append(f"• **{parts[0]}** - {parts[1] if len(parts) > 1 else 'Unknown'}")
+            
+            available_list = '\n'.join(available_agents[:5]) if available_agents else "• No agents found"
+            
+            return f"""❌ **Agent '{agent_uuid_or_tag}' not found!**
+
+The agent you're trying to start doesn't exist in the system.
+
+📋 **Available agents:**
+{available_list}
+
+💡 **Try:**
+• Use one of the UUIDs shown above
+• Ask "what agents are available" 
+• Check if you need to install the agent first"""
+        
+        # Check if agent is already running
+        if "running" in agent_details.lower():
+            agent_name = agent_details.split()[1] if len(agent_details.split()) > 1 else agent_uuid_or_tag
+            return f"ℹ️ **Agent '{agent_uuid_or_tag}' is already running!**\n\nAgent details: {agent_name}\n\n💡 No need to start it again - it's already active and working."
+        
         # Start the specific agent
         result = subprocess.run(
             [vctl_cmd, "start", agent_uuid_or_tag], 
@@ -1041,6 +1095,43 @@ def vctl_stop_agent(agent_uuid_or_tag):
         # Set environment variables
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
+        
+        # First, check if the agent actually exists
+        status_result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=10
+        )
+        
+        if status_result.returncode != 0:
+            return f"❌ Can't check agent status to verify '{agent_uuid_or_tag}' exists."
+        
+        # Check if the agent UUID/tag exists in the status output
+        agent_found = False
+        agent_details = ""
+        
+        if status_result.stdout:
+            status_lines = status_result.stdout.strip().split('\n')
+            for line in status_lines:
+                if agent_uuid_or_tag in line:
+                    agent_found = True
+                    agent_details = line.strip()
+                    break
+        
+        if not agent_found:
+            return f"""❌ **Agent '{agent_uuid_or_tag}' not found!**
+
+Can't stop an agent that doesn't exist.
+
+💡 **Try:** Ask "what's running" to see available agents"""
+        
+        # Check if agent is already stopped
+        if "running" not in agent_details.lower():
+            agent_name = agent_details.split()[1] if len(agent_details.split()) > 1 else agent_uuid_or_tag
+            return f"ℹ️ **Agent '{agent_uuid_or_tag}' is already stopped.**\n\nAgent details: {agent_name}\n\n💡 No need to stop it - it's already inactive."
         
         # Stop the specific agent
         result = subprocess.run(
@@ -1840,6 +1931,235 @@ def pip_list_packages():
         return "⏱️ Timeout getting package list - that's taking unusually long."
     except Exception as e:
         return f"💥 Error checking installed packages: {str(e)}"
+
+def install_fake_driver_complete():
+    """Complete fake driver installation workflow - installs library, configures platform driver, and sets up fake device."""
+    try:
+        # Check if VOLTTRON is running first
+        if not is_volttron_running_quick():
+            return "❌ VOLTTRON isn't running! Need to start it first before installing the fake driver.\n\n💡 **Try:** 'start volttron' first"
+        
+        messages = []
+        
+        # Step 1: Install the fake driver library
+        messages.append("🔧 **Step 1:** Installing volttron-lib-fake-driver library...")
+        
+        pip_cmd = find_pip_command()
+        if not pip_cmd:
+            return "❌ Can't find pip command. Are you in the right environment?"
+        
+        env = os.environ.copy()
+        if 'VIRTUAL_ENV' in os.environ:
+            env["PATH"] = f"{os.path.join(os.environ['VIRTUAL_ENV'], 'bin')}:{env['PATH']}"
+        
+        # Install the fake driver library
+        install_result = subprocess.run([
+            pip_cmd, "install", "volttron-lib-fake-driver"
+        ], capture_output=True, text=True, timeout=120, env=env)
+        
+        if install_result.returncode != 0:
+            error_output = install_result.stderr or install_result.stdout or "Unknown error"
+            return f"❌ Failed to install volttron-lib-fake-driver:\n{error_output}"
+        
+        messages.append("✅ Successfully installed volttron-lib-fake-driver!")
+        
+        # Step 2: Install platform driver if not already installed
+        messages.append("\n🔧 **Step 2:** Setting up platform driver...")
+        platform_result = vctl_install_platform_driver()
+        if "already installed" in platform_result.lower() or "successfully" in platform_result.lower():
+            messages.append("✅ Platform driver is ready!")
+        else:
+            messages.append(f"⚠️ Platform driver setup: {platform_result}")
+        
+        # Step 3: Create fake driver configuration
+        messages.append("\n🔧 **Step 3:** Creating fake driver configuration...")
+        config_result = create_fake_driver_config()
+        if "successfully" in config_result.lower():
+            messages.append("✅ Fake driver config created!")
+        else:
+            messages.append(f"⚠️ Config creation: {config_result}")
+        
+        # Step 4: Store configuration in VOLTTRON
+        messages.append("\n🔧 **Step 4:** Installing fake driver into platform driver...")
+        store_result = store_fake_driver_config()
+        if "successfully" in store_result.lower():
+            messages.append("✅ Fake driver configuration installed!")
+        else:
+            messages.append(f"⚠️ Config storage: {store_result}")
+        
+        # Step 5: Install listener to see the data
+        messages.append("\n🔧 **Step 5:** Installing listener agent to monitor data...")
+        listener_result = vctl_install_listener_agent()
+        if "successfully" in listener_result.lower() or "already" in listener_result.lower():
+            messages.append("✅ Listener agent ready!")
+        else:
+            messages.append(f"⚠️ Listener setup: {listener_result}")
+        
+        # Final success message
+        messages.append(f"""
+
+🎉 **FAKE DRIVER SETUP COMPLETE!**
+
+Your fake driver is now publishing simulated device data to the VOLTTRON message bus every 5 seconds!
+
+📊 **What's happening:**
+• The fake driver simulates various sensors (temperature, EKG, etc.)
+• Data gets published to topics like `devices/campus/building/fake/all`
+• The listener agent will log all this data
+
+🔍 **To see the data in action:**
+• Ask me to "show recent logs" to see the data flowing
+• The fake driver publishes readings every 5 seconds
+• Look for messages with topics starting with "devices/campus/building/fake"
+
+💡 **Next steps:**
+• Check the logs to see your simulated data
+• Try asking "what data is being published"
+• Explore the fake driver's various sensor readings
+
+Your VOLTTRON system is now generating realistic fake sensor data! 🚀""")
+        
+        return '\n'.join(messages)
+        
+    except subprocess.TimeoutExpired:
+        return "⏱️ Timeout during fake driver installation - this is taking unusually long."
+    except Exception as e:
+        return f"💥 Error during fake driver installation: {str(e)}"
+
+def check_fake_driver_status():
+    """Check if the fake driver is installed and working."""
+    try:
+        messages = []
+        
+        # Check if the library is installed
+        pip_cmd = find_pip_command()
+        if pip_cmd:
+            env = os.environ.copy()
+            if 'VIRTUAL_ENV' in os.environ:
+                env["PATH"] = f"{os.path.join(os.environ['VIRTUAL_ENV'], 'bin')}:{env['PATH']}"
+            
+            check_result = subprocess.run([
+                pip_cmd, "show", "volttron-lib-fake-driver"
+            ], capture_output=True, text=True, timeout=10, env=env)
+            
+            if check_result.returncode == 0:
+                messages.append("✅ volttron-lib-fake-driver library is installed")
+            else:
+                messages.append("❌ volttron-lib-fake-driver library is NOT installed")
+                return f"📋 **Fake Driver Status:**\n\n" + '\n'.join(messages) + "\n\n💡 **To install:** Ask me to 'install fake driver'"
+        
+        # Check if platform driver is running
+        status_output = vctl_status()
+        if "platform" in status_output.lower() and "driver" in status_output.lower():
+            messages.append("✅ Platform driver is installed and available")
+        else:
+            messages.append("❌ Platform driver not found")
+        
+        # Check if fake driver config exists
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if vctl_cmd:
+            env = os.environ.copy()
+            env["VOLTTRON_HOME"] = volttron_home
+            
+            config_check = subprocess.run([
+                vctl_cmd, "config", "list", "platform.driver"
+            ], capture_output=True, text=True, timeout=10, env=env, cwd=volttron_home)
+            
+            if config_check.returncode == 0 and "fake" in config_check.stdout.lower():
+                messages.append("✅ Fake driver configuration is stored")
+            else:
+                messages.append("❌ Fake driver configuration not found")
+        
+        # Check if listener is installed for monitoring
+        if "listener" in status_output.lower():
+            messages.append("✅ Listener agent available for monitoring data")
+        else:
+            messages.append("❌ Listener agent not installed")
+        
+        return f"📋 **Fake Driver Status:**\n\n" + '\n'.join(messages)
+        
+    except Exception as e:
+        return f"💥 Error checking fake driver status: {str(e)}"
+
+def show_fake_driver_data_logs():
+    """Show recent logs specifically filtering for fake driver data."""
+    try:
+        volttron_home = get_volttron_home()
+        
+        # Look for volttron.log file
+        possible_log_paths = [
+            os.path.join(volttron_home, "volttron.log"),
+            os.path.join(volttron_home, "volttron_home", "volttron.log"),
+            "volttron.log",  # In current directory
+            "/tmp/volttron.log"
+        ]
+        
+        log_file = None
+        for path in possible_log_paths:
+            if os.path.exists(path):
+                log_file = path
+                break
+        
+        if not log_file:
+            return "❌ Can't find volttron.log file. The fake driver data might not be logging to a file.\n\n💡 **Try:** Starting VOLTTRON with logging: `volttron -vv -l volttron.log &`"
+        
+        # Read recent lines from the log and filter for fake driver data
+        try:
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
+            
+            # Get last 50 lines and filter for relevant fake driver data
+            recent_lines = lines[-50:] if len(lines) > 50 else lines
+            fake_data_lines = []
+            
+            for line in recent_lines:
+                if any(keyword in line.lower() for keyword in [
+                    'devices/campus/building/fake',
+                    'fake driver', 
+                    'platform.driver',
+                    'outsideairtemperature',
+                    'ekg',
+                    'heartbeat'
+                ]):
+                    fake_data_lines.append(line.strip())
+            
+            if fake_data_lines:
+                return f"""📊 **Recent Fake Driver Data (last {len(fake_data_lines)} entries):**
+
+```
+{chr(10).join(fake_data_lines[-10:])}
+```
+
+🔍 **Log file:** `{log_file}`
+
+💡 **What you're seeing:**
+• Device readings from the fake driver every 5 seconds
+• Topics like `devices/campus/building/fake/all` 
+• Simulated sensor data (temperature, EKG, etc.)
+
+To see live updates, run in terminal: `tail -f {log_file}`"""
+            else:
+                return f"""📋 **No fake driver data found in recent logs.**
+
+**Checked log file:** `{log_file}`
+
+🤔 **This might mean:**
+• Fake driver isn't running yet
+• Logs aren't being written to file
+• Platform driver isn't publishing data
+
+💡 **Try:**
+• Check if fake driver is installed: ask "fake driver status"
+• Install it if needed: ask "install fake driver"
+• Make sure VOLTTRON is logging: `volttron -vv -l volttron.log &`"""
+                
+        except Exception as e:
+            return f"❌ Error reading log file {log_file}: {str(e)}"
+        
+    except Exception as e:
+        return f"💥 Error checking fake driver logs: {str(e)}"
     pip_cmd = shutil.which("pip")
     if pip_cmd:
         return pip_cmd

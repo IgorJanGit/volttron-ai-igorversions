@@ -22,7 +22,8 @@ from .volttron_commands import (
     show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
-    pip_uninstall_package, pip_list_packages
+    pip_uninstall_package, pip_list_packages, install_fake_driver_complete, check_fake_driver_status,
+    show_fake_driver_data_logs
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -185,6 +186,21 @@ if agent:
     def pip_list_tool() -> str:
         """List all installed Python packages."""
         return pip_list_packages()
+
+    @agent.tool_plain
+    def install_fake_driver_tool() -> str:
+        """Install and configure the complete VOLTTRON fake driver setup."""
+        return install_fake_driver_complete()
+
+    @agent.tool_plain
+    def check_fake_driver_status_tool() -> str:
+        """Check the status of the fake driver installation."""
+        return check_fake_driver_status()
+
+    @agent.tool_plain
+    def show_fake_driver_logs_tool() -> str:
+        """Show recent fake driver data from the logs."""
+        return show_fake_driver_data_logs()
 
 class AIService:
     """Service for handling AI model interactions with function tools support."""
@@ -422,6 +438,42 @@ class AIService:
                 "schema": {
                     "name": "pip_list",
                     "description": "List all installed Python packages",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "install_fake_driver": {
+                "function": install_fake_driver_complete,
+                "schema": {
+                    "name": "install_fake_driver",
+                    "description": "Install and configure the complete VOLTTRON fake driver setup with simulated sensor data",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "check_fake_driver_status": {
+                "function": check_fake_driver_status,
+                "schema": {
+                    "name": "check_fake_driver_status", 
+                    "description": "Check the status of the fake driver installation and configuration",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "show_fake_driver_logs": {
+                "function": show_fake_driver_data_logs,
+                "schema": {
+                    "name": "show_fake_driver_logs",
+                    "description": "Show recent fake driver data and sensor readings from the logs",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -1583,21 +1635,21 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         """Handle direct VOLTTRON commands without AI processing."""
         message_lower = message.lower().strip()
         
-        # Simple running status questions
+        # Enhanced "what's running" analysis with context awareness
         if any(phrase in message_lower for phrase in [
-            'is anything running', 'what is running', 'is volttron running', 
-            'anything running', 'is running', 'running status'
+            'what is running', 'what\'s running', 'what running', 'whats running',
+            'show me what running', 'tell me what running', 'inform me what running',
+            'is anything running', 'anything running', 'is running', 'running status'
         ]):
-            # For detailed questions about what's running, show full status
-            if any(phrase in message_lower for phrase in [
-                'what is running', 'what\'s running', 'inform me what running',
-                'what running', 'show me what running', 'tell me what running'
-            ]):
-                return self.call_function_tool("vctl_status", {})
-            else:
-                # For simple yes/no questions
-                from chat_app.volttron_commands import is_volttron_running
-                return is_volttron_running()
+            return self._handle_whats_running_question(message_lower)
+        
+        # Simple VOLTTRON platform status questions
+        elif any(phrase in message_lower for phrase in [
+            'is volttron running', 'is platform running', 'volttron running'
+        ]):
+            # For simple yes/no questions about the platform itself
+            from chat_app.volttron_commands import is_volttron_running
+            return is_volttron_running()
         
         # Status commands
         if message_lower in ['status', 'vctl status', 'agent status', 'check status']:
@@ -1605,21 +1657,63 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         elif message_lower in ['volttron status', 'platform status', 'check volttron']:
             return self.call_function_tool("check_volttron_status", {})
         
+        # Individual agent status queries
+        agent_status_patterns = [
+            r'(?:what|whats|show|check)?\s*status\s+(?:of\s+)?(?:agent\s+)?([a-z0-9]+)',
+            r'(?:what|whats|show|check)?\s*(?:agent\s+)?([a-z0-9]+)\s+status',
+            r'how\s+is\s+(?:agent\s+)?([a-z0-9]+)(?:\s+doing)?',
+            r'is\s+(?:agent\s+)?([a-z0-9]+)\s+(?:running|active|up)',
+        ]
+        
+        for pattern in agent_status_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                agent_id = match.group(1)
+                # Make sure it's a reasonable agent ID (short identifier)
+                if len(agent_id) <= 5 and agent_id not in ['the', 'it', 'that', 'this', 'what', 'how', 'is']:
+                    # Return the full status but with focus on the specific agent
+                    status_result = self.call_function_tool("vctl_status", {})
+                    if agent_id in status_result:
+                        return status_result
+                    else:
+                        return f"🔍 **Looking for agent '{agent_id}'...**\n\n{status_result}"
+        
         # Start/Stop commands with better spelling handling
         if any(phrase in message_lower for phrase in [
             'start volttron', 'start volltron', 'start volltrron', 'start voltrron',
-            'start voltron', 'start platform', 'launch volttron', 'launch volltron'
+            'start voltron', 'start platform', 'launch volttron', 'launch volltron',
+            'start the volttron', 'start the volltron', 'start the volltrron', 'start the voltrron',
+            'start the voltron', 'start the platform', 'launch the volttron', 'launch the volltron'
         ]):
             return self.call_function_tool("start_volttron", {})
         elif any(phrase in message_lower for phrase in [
             'stop volttron', 'stop volltron', 'stop volltrron', 'stop voltrron',
-            'stop voltron', 'stop platform', 'shutdown volttron', 'shutdown volltron'
+            'stop voltron', 'stop platform', 'shutdown volttron', 'shutdown volltron',
+            'stop the volttron', 'stop the volltron', 'stop the volltrron', 'stop the voltrron',
+            'stop the voltron', 'stop the platform', 'shutdown the volttron', 'shutdown the volltron'
         ]):
             return self.call_function_tool("stop_volttron", {})
         
         # Install commands
         elif message_lower in ['install listener', 'install listener agent']:
             return self.call_function_tool("vctl_install_listener_agent", {})
+        
+        # Fake driver commands
+        elif any(phrase in message_lower for phrase in [
+            'install fake driver', 'setup fake driver', 'install volttron-lib-fake-driver',
+            'configure fake driver', 'fake driver setup'
+        ]):
+            return self.call_function_tool("install_fake_driver", {})
+        elif any(phrase in message_lower for phrase in [
+            'fake driver status', 'check fake driver', 'fake driver check',
+            'is fake driver installed', 'fake driver installed'
+        ]):
+            return self.call_function_tool("check_fake_driver_status", {})
+        elif any(phrase in message_lower for phrase in [
+            'show fake driver logs', 'fake driver logs', 'fake driver data',
+            'show fake data', 'fake sensor data', 'see fake driver', 'fake driver output'
+        ]):
+            return self.call_function_tool("show_fake_driver_logs", {})
         
         # List commands
         elif message_lower in ['list agents', 'available agents', 'what agents']:
@@ -1699,7 +1793,31 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         ]):
             return self.call_function_tool("pip_list", {})
         
-        # Pattern matching for start/stop agent commands
+        # Enhanced pattern matching for agent commands with natural language
+        # Look for agent references in conversational format
+        agent_reference_patterns = [
+            r'start.*?\*\*([a-z0-9]+)\*\*',  # "start this one • **b** - volttron..."
+            r'start.*?•\s*\*\*([a-z0-9]+)\*\*',  # More specific bullet pattern
+            r'start.*?(?:agent\s+)?([a-z0-9]+)\s*-\s*volttron',  # "start agent b - volttron..."
+            r'start.*?(?:uuid\s*:?\s*)?([a-z0-9]+)(?:\s*\)|$)',  # "start agent (b)" or "start UUID: b"
+        ]
+        
+        for pattern in agent_reference_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                agent_id = match.group(1)
+                # Make sure it's a valid agent ID (single letter or short number)
+                if len(agent_id) <= 3 and agent_id not in ['the', 'one', 'it', 'this', 'that']:
+                    return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": agent_id})
+        
+        # Simple conversational agent commands
+        if any(phrase in message_lower for phrase in [
+            'start listener', 'start the listener', 'run listener', 'run the listener'
+        ]):
+            # Try to start the most recently mentioned listener or first available
+            return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": "b"})
+        
+        # Pattern matching for start/stop agent commands (basic patterns)
         start_patterns = [
             r'start\s+(\w+)',
             r'start\s+agent\s+(\w+)'
@@ -1710,7 +1828,7 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             if match:
                 agent_id = match.group(1)
                 # Exclude VOLTTRON platform variations and common misspellings
-                volttron_variations = ['agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform']
+                volttron_variations = ['agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform', 'the', 'this', 'that', 'one']
                 if agent_id and agent_id not in volttron_variations:
                     return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": agent_id})
         
@@ -1723,7 +1841,7 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                if agent_id and agent_id not in ['agent', 'volttron', 'platform']:
+                if agent_id and agent_id not in ['agent', 'volttron', 'platform', 'the']:
                     return self.call_function_tool("vctl_stop_agent", {"agent_uuid_or_tag": agent_id})
         
         return None  # No direct command matched
@@ -1795,6 +1913,82 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
                 return True, "I understand you want to reverse something, but I'm not sure what. Can you be more specific about what you'd like me to undo?"
         
         return False, ""
+    
+    def _handle_whats_running_question(self, message_lower: str) -> str:
+        """Handle 'what's running' questions with context analysis and clarification."""
+        
+        # First, try to infer from context what they're asking about
+        context_clues = {
+            'volttron': ['volttron', 'platform', 'system', 'daemon'],
+            'agents': ['agent', 'agents', 'service', 'services', 'listener', 'driver'],
+            'processes': ['process', 'processes', 'pid', 'background']
+        }
+        
+        # Check conversation history for recent context
+        recent_context = ""
+        if hasattr(self, 'conversation_history') and self.conversation_history:
+            # Look at last few messages for context
+            recent_messages = self.conversation_history[-5:]
+            for msg in recent_messages:
+                if isinstance(msg, dict) and 'content' in msg:
+                    recent_context += msg['content'].lower() + " "
+        
+        # Add current message to context (handle VOLTTRON typos)
+        normalized_message = message_lower
+        volttron_typos = ['volltron', 'volltrron', 'voltrron', 'voltron']
+        for typo in volttron_typos:
+            normalized_message = normalized_message.replace(typo, 'volttron')
+        
+        full_context = (recent_context + " " + normalized_message).lower()
+        
+        # Score different interpretations based on context
+        scores = {}
+        for category, keywords in context_clues.items():
+            scores[category] = sum(1 for keyword in keywords if keyword in full_context)
+        
+        # Determine most likely interpretation
+        max_score = max(scores.values()) if scores.values() else 0
+        
+        if max_score > 0:
+            # Find the category with highest score
+            likely_category = max(scores, key=scores.get)
+            
+            # Check if there are tied scores (ambiguous context)
+            tied_categories = [cat for cat, score in scores.items() if score == max_score]
+            
+            if len(tied_categories) > 1:
+                # Ambiguous context - ask for clarification
+                pass  # Fall through to clarification section
+            elif likely_category == 'volttron':
+                # They're asking about the VOLTTRON platform specifically
+                from chat_app.volttron_commands import is_volttron_running
+                return is_volttron_running()
+            elif likely_category == 'agents':
+                # They're asking about agents specifically
+                return self.call_function_tool("vctl_status", {})
+            else:
+                # Default to showing everything
+                return self.call_function_tool("vctl_status", {})
+        
+        # No clear context - ask for clarification with helpful options
+        from chat_app.volttron_commands import is_volttron_running, vctl_status
+        
+        # Quick check if VOLTTRON is running to provide better context
+        volttron_status = is_volttron_running()
+        is_platform_running = volttron_status.lower() in ['yes', 'true'] or "✅" in volttron_status or "running" in volttron_status.lower()
+        
+        if is_platform_running:
+            return ("🤔 **What specifically are you asking about?**\n\n"
+                   "I can check:\n"
+                   "• **VOLTTRON platform** - The main system status\n"
+                   "• **VOLTTRON agents** - Individual services and their status\n\n"
+                   "💡 Just say *\"platform status\"* or *\"agent status\"* to be specific!")
+        else:
+            return ("🤔 **What specifically are you asking about?**\n\n"
+                   "⚠️ **VOLTTRON platform is not running** - so no agents can be active either.\n\n"
+                   "Would you like me to:\n"
+                   "• **Start VOLTTRON** - Launch the platform\n"
+                   "• **Check system processes** - See what's running on your system")
     
     def get_model_info(self) -> dict:
         """Get information about the current model."""
