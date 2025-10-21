@@ -7,7 +7,8 @@ from pathlib import Path
 AVAILABLE_AGENTS = {
     # Core Agents
     'listener': {
-        'package': 'volttron-listener',
+        'package': 'volttron-listener-agent',  # Updated to the new package name
+        'alt_package': 'volttron-listener',    # Alternative/legacy package name
         'vip_identity': 'listener',
         'description': 'Simple listener agent that monitors all platform messages',
         'category': 'Core'
@@ -248,32 +249,63 @@ Environment is properly configured!
 """
 
 def is_volttron_running_quick():
-    """Quick check if VOLTTRON is running - returns True/False only."""
+    """Quick check if VOLTTRON is running - returns True/False only.
+    This function uses multiple methods to detect VOLTTRON running status.
+    """
     try:
-        # Use vctl status as the primary check since it actually tests functionality
-        vctl_cmd = find_vctl_command()
-        if vctl_cmd:
-            volttron_home = get_volttron_home()
-            env = os.environ.copy()
-            env["VOLTTRON_HOME"] = volttron_home
-            
+        # Method 1 (Most reliable): Check for VOLTTRON processes 
+        try:
             result = subprocess.run(
-                [vctl_cmd, "status"],
-                capture_output=True, text=True, 
-                env=env, cwd=volttron_home, timeout=5
+                ["pgrep", "-f", "bin/volttron"],
+                capture_output=True, text=True, timeout=5
             )
-            # If vctl status succeeds, VOLTTRON is actually running and functional
-            return result.returncode == 0
             
-        # Fallback: Check for VOLTTRON processes (less reliable)
-        result = subprocess.run(
-            ["pgrep", "-f", "bin/volttron"],
-            capture_output=True, text=True, timeout=5
-        )
+            if result.returncode == 0 and result.stdout.strip():
+                print(f"VOLTTRON is running (pgrep found process): {result.stdout.strip()}")
+                return True
+        except Exception as e:
+            print(f"Error in pgrep check: {str(e)}")
         
-        return result.returncode == 0 and result.stdout.strip()
+        # Method 2: Check with ps aux for more detailed process info
+        try:
+            result = subprocess.run(
+                ["ps", "aux"],
+                capture_output=True, text=True, timeout=5
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'volttron' in line and 'bin/volttron' in line and not 'grep' in line:
+                        print(f"VOLTTRON is running (ps found process): {line[:50]}...")
+                        return True
+        except Exception as e:
+            print(f"Error in ps check: {str(e)}")
         
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception):
+        # Method 3: Try vctl status command (can be unreliable during startup)
+        try:
+            vctl_cmd = find_vctl_command()
+            if vctl_cmd:
+                volttron_home = get_volttron_home()
+                env = os.environ.copy()
+                env["VOLTTRON_HOME"] = volttron_home
+                
+                result = subprocess.run(
+                    [vctl_cmd, "status"],
+                    capture_output=True, text=True, 
+                    env=env, cwd=volttron_home, timeout=5
+                )
+                # If vctl status succeeds, VOLTTRON is running
+                if result.returncode == 0:
+                    print("VOLTTRON is running (vctl status succeeded)")
+                    return True
+        except Exception as e:
+            print(f"Error in vctl check: {str(e)}")
+            
+        print("All VOLTTRON running checks failed - VOLTTRON is not running")
+        return False
+        
+    except Exception as e:
+        print(f"Error in VOLTTRON status check: {str(e)}")
         return False
 
 def kill_existing_volttron_processes():
@@ -516,25 +548,46 @@ def vctl_status(explain=False):
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        # Get detailed agent status
-        result = subprocess.run(
-            [vctl_cmd, "status"], 
-            capture_output=True, 
-            text=True,
-            env=env,
-            cwd=volttron_home
-        )
+        # First check if VOLTTRON is running via process check (more reliable)
+        is_running = is_volttron_running_quick()
+        if not is_running:
+            warning_msg = ""
+            if explain:
+                return f"""{warning_msg}❌ **Oops! VOLTTRON isn't running right now.**
+
+The platform needs to be started before I can check on your agents.
+
+🚀 **Ready to fire it up?** Just say:
+   • "Start VOLTTRON"
+   • "Launch the platform"  
+   • "Get VOLTTRON running"
+
+I'll get it started for you! ⚡
+"""
+            else:
+                return f"{warning_msg}Uh oh, I'm not running right now! Want to start me up?"
         
-        # Format any system warnings
-        warning_msg = format_volttron_warnings(result.stderr)
-        
-        if result.returncode == 0:
-            status_output = result.stdout.strip()
+        # Try to get detailed agent status with timeout
+        try:
+            result = subprocess.run(
+                [vctl_cmd, "status"], 
+                capture_output=True, 
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=15  # Add timeout to prevent hanging
+            )
             
-            # Check if no agents are installed
-            if not status_output or "No installed Agents found" in status_output:
-                if explain:
-                    return f"""{warning_msg}🟡 **VOLTTRON is running, but it looks pretty quiet in here!**
+            # Format any system warnings
+            warning_msg = format_volttron_warnings(result.stderr)
+            
+            if result.returncode == 0:
+                status_output = result.stdout.strip()
+                
+                # Check if no agents are installed
+                if not status_output or "No installed Agents found" in status_output:
+                    if explain:
+                        return f"""{warning_msg}🟡 **VOLTTRON is running, but it looks pretty quiet in here!**
 
 No agents are currently installed or running. This is normal for a fresh VOLTTRON installation.
 
@@ -545,16 +598,16 @@ No agents are currently installed or running. This is normal for a fresh VOLTTRO
 
 Your VOLTTRON platform is ready - it just needs some agents to manage! 🤖
 """
-                else:
-                    return f"{warning_msg}I'm up and running, but I don't have any agents installed yet. Pretty quiet around here!"
-            
-            # Make the status output more readable and conversational
-            readable_status = make_status_readable(status_output)
-            conversational_summary = make_status_conversational(status_output)
-            
-            # Return brief status by default, detailed explanation if requested
-            if explain:
-                explanation = """
+                    else:
+                        return f"{warning_msg}I'm up and running, but I don't have any agents installed yet. Pretty quiet around here!"
+                
+                # Make the status output more readable and conversational
+                readable_status = make_status_readable(status_output)
+                conversational_summary = make_status_conversational(status_output)
+                
+                # Return brief status by default, detailed explanation if requested
+                if explain:
+                    explanation = """
 📊 **Here's what's happening with your VOLTTRON agents:**
 
 Let me break down what you're seeing:
@@ -568,18 +621,17 @@ Let me break down what you're seeing:
 
 **Current Status:**
 """
-                return f"{warning_msg}{explanation}\n{readable_status}\n\n💬 Need help with any of these agents? Just ask!"
+                    return f"{warning_msg}{explanation}\n{readable_status}\n\n💬 Need help with any of these agents? Just ask!"
+                else:
+                    # For brief status, show both the formatted table AND conversational summary
+                    return f"{warning_msg}🤖 **Here's what I've got running:**\n\n{readable_status}\n\n💬 {conversational_summary}"
+                    
             else:
-                # For brief status, show both the formatted table AND conversational summary
-                return f"{warning_msg}🤖 **Here's what I've got running:**\n\n{readable_status}\n\n💬 {conversational_summary}"
+                error_msg = result.stderr or result.stdout or "Unknown error"
                 
-        else:
-            error_msg = result.stderr or result.stdout or "Unknown error"
-            warning_msg = format_volttron_warnings(result.stderr)
-            
-            if "not connected" in error_msg.lower() or "connection" in error_msg.lower():
-                if explain:
-                    return f"""{warning_msg}❌ **Oops! VOLTTRON isn't running right now.**
+                if "not connected" in error_msg.lower() or "connection" in error_msg.lower():
+                    if explain:
+                        return f"""{warning_msg}❌ **Oops! VOLTTRON isn't running right now.**
 
 The platform needs to be started before I can check on your agents.
 
@@ -590,12 +642,31 @@ The platform needs to be started before I can check on your agents.
 
 I'll get it started for you! ⚡
 """
+                    else:
+                        return f"{warning_msg}Uh oh, I'm not running right now! Want to start me up?"
                 else:
-                    return f"{warning_msg}Uh oh, I'm not running right now! Want to start me up?"
+                    # Try using process check as fallback to confirm VOLTTRON is running
+                    if is_running:
+                        return f"{warning_msg}VOLTTRON is running, but the status command had issues: {error_msg}. You might need to check it directly."
+                    else:
+                        return f"{warning_msg}I'm having trouble checking my status: {error_msg}"
+        
+        except subprocess.TimeoutExpired:
+            # If vctl status times out but process check shows VOLTTRON is running
+            if is_running:
+                return f"VOLTTRON appears to be running, but the status command is taking too long to respond. This could mean the system is under heavy load or experiencing issues."
             else:
-                return f"{warning_msg}I'm having trouble checking my status: {error_msg}"
+                return "VOLTTRON doesn't seem to be running currently. The status command timed out."
+                
     except Exception as e:
-        return f"Something went wrong while I was checking on myself: {str(e)}"
+        # Try using process check as final fallback
+        try:
+            if is_volttron_running_quick():
+                return f"VOLTTRON appears to be running, but I encountered an error while checking detailed status: {str(e)}"
+            else:
+                return f"VOLTTRON doesn't seem to be running. Error details: {str(e)}"
+        except Exception:
+            return f"Something went wrong while I was checking on myself: {str(e)}"
 
 def make_status_conversational(status_output):
     """Convert status output to conversational summary."""
@@ -1888,22 +1959,37 @@ def wait_for_volttron_ready(max_wait_seconds=30):
     env["VOLTTRON_HOME"] = volttron_home
     
     while time.time() - start_time < max_wait_seconds:
+        # Method 1: Check for running VOLTTRON processes
         try:
-            # Test if vctl status works (indicating VOLTTRON is ready)
-            result = subprocess.run(
-                [vctl_cmd, "status"], 
-                capture_output=True, 
-                text=True,
-                env=env,
-                cwd=volttron_home,
-                timeout=5
+            process_check = subprocess.run(
+                ["pgrep", "-f", "bin/volttron"],
+                capture_output=True, text=True, timeout=5
             )
-            
-            # If vctl status succeeds (regardless of output), VOLTTRON is ready
-            if result.returncode == 0:
-                return True, "✅ VOLTTRON is ready"
-                
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+            if process_check.returncode == 0 and process_check.stdout.strip():
+                # Found a VOLTTRON process, now try if vctl is responsive
+                try:
+                    # Test if vctl status works (indicating VOLTTRON is ready)
+                    result = subprocess.run(
+                        [vctl_cmd, "status"], 
+                        capture_output=True, 
+                        text=True,
+                        env=env,
+                        cwd=volttron_home,
+                        timeout=5
+                    )
+                    
+                    # If vctl status succeeds (regardless of output), VOLTTRON is ready
+                    if result.returncode == 0:
+                        return True, "✅ VOLTTRON is ready (vctl status working)"
+                except:
+                    # vctl failed but process is running, might be starting up
+                    pass
+                    
+                # Even if vctl failed, if process is running for more than 10 seconds, 
+                # assume it's ready enough to try operations
+                if time.time() - start_time > 10:
+                    return True, "✅ VOLTTRON process is running (assumed ready)"
+        except:
             pass
         
         # Wait a bit before retrying
@@ -1929,28 +2015,52 @@ def vctl_install_listener_agent():
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        # First, check if volttron-listener package is installed
+        # First, check if volttron-listener-agent package is installed
         pip_cmd = find_pip_command()
         if pip_cmd:
+            # Try both package names (current and legacy)
             check_result = subprocess.run([
+                pip_cmd, "show", "volttron-listener-agent"
+            ], capture_output=True, text=True, timeout=10, env=env)
+            
+            legacy_check_result = subprocess.run([
                 pip_cmd, "show", "volttron-listener"
             ], capture_output=True, text=True, timeout=10, env=env)
             
-            if check_result.returncode != 0:
-                # Install the volttron-listener package
+            if check_result.returncode != 0 and legacy_check_result.returncode != 0:
+                # Both checks failed - install the volttron-listener-agent package
+                print("Installing volttron-listener-agent package...")
                 install_result = subprocess.run([
-                    pip_cmd, "install", "volttron-listener"
+                    pip_cmd, "install", "volttron-listener-agent"
                 ], capture_output=True, text=True, timeout=60, env=env)
                 
                 if install_result.returncode != 0:
-                    return f"❌ Failed to install volttron-listener package: {install_result.stderr}"
+                    # Try the legacy package name as fallback
+                    install_result = subprocess.run([
+                        pip_cmd, "install", "volttron-listener"
+                    ], capture_output=True, text=True, timeout=60, env=env)
+                    
+                    if install_result.returncode != 0:
+                        return f"❌ Failed to install listener agent package: {install_result.stderr}"
         
-        # Install the listener agent
-        result = subprocess.run([
-            vctl_cmd, "install", "volttron-listener",
-            "--vip-identity", "listener",
-            "--start"
-        ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
+        # Install the listener agent (try both package names)
+        try:
+            # Try the new package name first
+            result = subprocess.run([
+                vctl_cmd, "install", "volttron-listener-agent",
+                "--vip-identity", "listener",
+                "--start"
+            ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
+            
+            # If that fails, try the legacy package name
+            if result.returncode != 0 and "not found" in (result.stderr + result.stdout).lower():
+                result = subprocess.run([
+                    vctl_cmd, "install", "volttron-listener",
+                    "--vip-identity", "listener",
+                    "--start"
+                ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
+        except Exception as e:
+            return f"❌ Error during listener agent installation: {str(e)}"
         
         if result.returncode == 0:
             return """
@@ -2009,21 +2119,43 @@ def vctl_install_agent(agent_name):
         # Install the package first
         pip_cmd = find_pip_command()
         if pip_cmd:
-            print(f"📦 Installing package: {agent_info['package']}")
+            # Primary package name
+            package_name = agent_info['package']
+            print(f"📦 Installing package: {package_name}")
             install_result = subprocess.run([
-                pip_cmd, "install", agent_info['package']
+                pip_cmd, "install", package_name
             ], capture_output=True, text=True, timeout=120, env=env)
             
+            # If primary package fails and there's an alternative package, try that
+            if install_result.returncode != 0 and 'alt_package' in agent_info:
+                alt_package = agent_info['alt_package']
+                print(f"📦 Primary package install failed, trying alternative: {alt_package}")
+                alt_install_result = subprocess.run([
+                    pip_cmd, "install", alt_package
+                ], capture_output=True, text=True, timeout=120, env=env)
+                
+                # If alternative succeeded, use that package name going forward
+                if alt_install_result.returncode == 0:
+                    package_name = alt_package
+                    install_result = alt_install_result
+            
+            # If both attempts failed, return error
             if install_result.returncode != 0:
-                return f"""❌ **Failed to install {agent_info['package']} package**
+                return f"""❌ **Failed to install {agent_name} agent package**
 
 **Error:** {install_result.stderr or install_result.stdout}
 
-💡 **Try manually:** `pip install {agent_info['package']}`"""
+💡 **Try manually:** `pip install {package_name}`"""
+            
+            # Store the successful package name for use below
+            agent_info['installed_package'] = package_name
         
         # Install the agent in VOLTTRON
+        # Use the successful package name (either primary or alternative)
+        package_to_install = agent_info.get('installed_package', agent_info['package'])
+        
         install_args = [
-            vctl_cmd, "install", agent_info['package'],
+            vctl_cmd, "install", package_to_install,
             "--vip-identity", agent_info['vip_identity']
         ]
         
@@ -2124,6 +2256,93 @@ def find_pip_command():
             return path
     
     # Try to find pip in PATH
+
+def pip_install_package(package_name, upgrade=False):
+    """Install a Python package using pip with conversational output.
+    
+    Args:
+        package_name (str): Name of the package to install
+        upgrade (bool): If True, add --upgrade flag
+    
+    Returns:
+        str: Casual, conversational status message
+    """
+    try:
+        pip_cmd = find_pip_command()
+        if not pip_cmd:
+            return "❌ Pip command not found. Please install pip first."
+        
+        # Build command with or without upgrade flag
+        cmd = [pip_cmd, "install"]
+        if upgrade:
+            cmd.append("--upgrade")
+        cmd.append(package_name)
+        
+        # Run the installation command
+        print(f"📦 Installing package: {package_name}")
+        install_result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        # Check for successful installation
+        if install_result.returncode == 0:
+            # Check if it was already installed
+            if "Requirement already satisfied" in install_result.stdout:
+                return f"""✅ **{package_name} is already installed!**
+
+The package is ready to use. If you want to upgrade to the latest version, ask me to:
+• "Upgrade {package_name}"
+• "pip install --upgrade {package_name}"
+
+What would you like to do next?"""
+            else:
+                return f"""🎉 **Successfully installed {package_name}!**
+
+The package is now ready to use.
+
+What would you like to do next?"""
+        else:
+            # Handle installation errors
+            error_output = install_result.stderr or install_result.stdout
+            
+            # Check for common errors
+            if "No matching distribution found" in error_output:
+                return f"""❌ **Package '{package_name}' not found**
+
+The package name might be incorrect or not available from PyPI.
+
+💡 **Suggestions:**
+• Check the spelling of the package name
+• Try a different package name
+• Look for alternative packages with similar functionality
+
+Would you like me to help you find an alternative package?"""
+            elif "Permission denied" in error_output:
+                return f"""❌ **Permission denied when installing {package_name}**
+
+You may need admin privileges to install this package.
+
+💡 **Try:**
+• Adding `--user` flag: `pip install --user {package_name}`
+• Using a virtual environment
+• Running with sudo (if appropriate): `sudo pip install {package_name}`"""
+            else:
+                return f"""❌ **Failed to install {package_name}**
+
+**Error:** {error_output[:500]}...
+
+💡 **Try:**
+• Check your internet connection
+• Ensure the package name is correct
+• Try installing with `pip install --user {package_name}`"""
+                
+    except subprocess.TimeoutExpired:
+        return f"❌ Installation of {package_name} timed out. The package might be very large or your internet connection might be slow."
+    except Exception as e:
+        return f"❌ Error during installation: {str(e)}"
 
 def pip_uninstall_package(package_name, force=False):
     """Uninstall a Python package using pip with casual conversational output.
@@ -3140,25 +3359,23 @@ This usually means your VOLTTRON installation is incomplete. Try reinstalling VO
         return get_volttron_installation_help()
 
 def vctl_install_platform_driver():
-    """Install the VOLTTRON platform driver agent."""
+    """Install the VOLTTRON platform driver agent with proper pip and vctl installation."""
     vctl_cmd = find_vctl_command()
     volttron_home = get_volttron_home()
     
     if not vctl_cmd:
         return check_volttron_installation()
     
-    # Check if VOLTTRON is running before trying to install
-    if not is_volttron_running_quick():
-        return """❌ **VOLTTRON is not running!**
-
-**Cannot install platform driver agent** - VOLTTRON platform must be running first.
-
-💡 **Please try this:**
-1. Ask me to "start volttron" first
-2. Wait a few seconds for it to start up
-3. Then try installing the platform driver again
-
-**Why this matters:** Agent installation requires an active VOLTTRON platform to register and configure the agent properly."""
+    # First, ALWAYS attempt to start VOLTTRON regardless of current status
+    print("Ensuring VOLTTRON is running by starting it...")
+    start_volttron()
+    
+    # Wait a moment for VOLTTRON to initialize
+    import time
+    time.sleep(5)
+    
+    # Now proceed with installation regardless of status checks
+    # This bypasses all status detection issues and ensures we try to install
     
     try:
         # Set environment variables
@@ -3188,11 +3405,46 @@ Would you like me to:
 Just ask: **"Install the fake driver library"** and I'll get started! 🚀
 """
         
-        # Install the platform driver agent
-        install_result = subprocess.run([
-            vctl_cmd, "install", "volttron-platform-driver", 
-            "--vip-identity", "platform.driver", "--start"
-        ], capture_output=True, text=True, timeout=120)
+        # STEP 1: Install the Python package with pip first
+        pip_cmd = find_pip_command()
+        package_name = "volttron-platform-driver"
+        
+        if pip_cmd:
+            print(f"📦 Installing platform driver package: {package_name}")
+            pip_result = subprocess.run([
+                pip_cmd, "install", package_name
+            ], capture_output=True, text=True, timeout=120, env=env)
+            
+            if pip_result.returncode != 0:
+                return f"""❌ **Failed to install platform driver package**
+
+Error installing the Python package:
+```
+{pip_result.stderr or pip_result.stdout}
+```
+
+Please try manually running:
+```
+pip install volttron-platform-driver
+```
+
+Once the package is installed, try installing the agent again.
+"""
+        
+        # STEP 2: Now install the agent with vctl - using full environment and explicit path
+        print(f"Installing platform driver with vctl: {vctl_cmd}")
+        print(f"VOLTTRON_HOME: {volttron_home}")
+        
+        # Run more direct command with shell=True to ensure proper environment handling
+        install_cmd = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} install volttron-platform-driver --vip-identity platform.driver --start --priority 40"
+        install_result = subprocess.run(
+            install_cmd, 
+            shell=True,
+            capture_output=True, 
+            text=True, 
+            timeout=120,
+            env=env
+        )
         
         # Format any system warnings from installation
         install_warning_msg = format_volttron_warnings(install_result.stderr)

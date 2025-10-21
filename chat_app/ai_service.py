@@ -22,7 +22,7 @@ from .volttron_commands import (
     show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
-    pip_uninstall_package, pip_list_packages, install_fake_driver_complete, check_fake_driver_status,
+    pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_complete, check_fake_driver_status,
     show_fake_driver_data_logs, vctl_start_all_agents, vctl_force_remove_agent
 )
 
@@ -181,6 +181,16 @@ if agent:
             package_name: The name of the package to uninstall (e.g., 'volttron-listener')
         """
         return pip_uninstall_package(package_name, force=True)
+    
+    @agent.tool_plain
+    def pip_install_tool(package_name: str, upgrade: bool = False) -> str:
+        """Install a Python package using pip.
+        
+        Args:
+            package_name: The name of the package to install (e.g., 'volttron-platform-driver')
+            upgrade: Whether to add the --upgrade flag
+        """
+        return pip_install_package(package_name, upgrade)
 
     @agent.tool_plain
     def pip_list_tool() -> str:
@@ -451,11 +461,45 @@ class AIService:
                     }
                 }
             },
+            "pip_install": {
+                "function": pip_install_package,
+                "schema": {
+                    "name": "pip_install",
+                    "description": "Install a Python package using pip",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "package_name": {
+                                "type": "string",
+                                "description": "The name of the package to install (e.g., 'volttron-platform-driver')"
+                            },
+                            "upgrade": {
+                                "type": "boolean",
+                                "description": "Whether to add the --upgrade flag",
+                                "default": False
+                            }
+                        },
+                        "required": ["package_name"]
+                    }
+                }
+            },
             "pip_list": {
                 "function": pip_list_packages,
                 "schema": {
                     "name": "pip_list",
                     "description": "List all installed Python packages",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "vctl_install_platform_driver": {
+                "function": vctl_install_platform_driver,
+                "schema": {
+                    "name": "vctl_install_platform_driver",
+                    "description": "Install the VOLTTRON platform driver agent",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -1598,7 +1642,9 @@ Please specify which agent to uninstall. Examples:
                 r"stop.*volttron": "stop_volttron",
                 r"stop.*volltron": "stop_volttron",   # Handle common misspelling
                 r"list.*agents": "vctl_list_agents",
-                r"install.*driver": "install_fake_driver_library",
+                r"install.*fake.*driver": "install_fake_driver_library",
+                r"install.*(the|a)?.*platform.*driver": "vctl_install_platform_driver",
+                r"install.*(the|a)?.*listener.*agent": "vctl_install_listener_agent",
                 r"install.*agent": "vctl_install_listener_agent",
                 r"show.*logs": "show_recent_logs",
                 r"health.*check": "vctl_health"
@@ -1914,6 +1960,76 @@ You can use "vctl status" to see all agents and their tags."""
                 agent_id = match.group(1)
                 if agent_id and agent_id not in ['agent', 'the', 'platform']:
                     return self.call_function_tool("vctl_uninstall_agent", {"agent_uuid_or_tag": agent_id})
+        
+        # Pattern matching for pip install commands
+        pip_install_patterns = [
+            r'pip\s+install\s+(\S+)',
+            r'install\s+package\s+(\S+)',
+            r'add\s+package\s+(\S+)',
+            r'pip\s+add\s+(\S+)',
+            r'install\s+with\s+pip\s+(\S+)',
+            r'install\s+the\s+(\S+-\S+)(?:\s+package)?',  # Hyphenated package names with "the"
+            r'install\s+(\S+-\S+)',  # Hyphenated package names
+            r'install\s+the\s+platform\s+driver',  # Special case for platform driver
+            r'install\s+platform\s+driver',  # Special case for platform driver
+            r'install\s+the\s+(\S+)(?:\s+package)?',
+            r'install\s+(\S+)(?:\s+agent)?',
+            r'install\s+(\S+)(?:\s+using\s+pip)?',
+            r'can\s+you\s+install\s+(\S+)'
+        ]
+        
+        # Special case for "platform driver" before pattern matching
+        if ("install platform driver" in message_lower or 
+            "install the platform driver" in message_lower or 
+            "install a platform driver" in message_lower):
+            # Skip pip install and directly call vctl_install_platform_driver
+            # which will handle both pip install AND vctl install
+            return self.call_function_tool("vctl_install_platform_driver", {})
+        
+        for pattern in pip_install_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                # Handle special case patterns that don't have capture groups
+                if pattern == r'install\s+the\s+platform\s+driver' or pattern == r'install\s+platform\s+driver':
+                    package_name = "platform-driver"
+                else:
+                    package_name = match.group(1)
+                
+                # Skip common words that aren't likely to be packages
+                if package_name and package_name not in ['package', 'the', 'a', 'an', 'that', 'it', 'this', 'agent']:
+                    # Handle special cases for volttron packages - install as agents, not just pip packages
+                    if package_name == "platform-driver" or package_name == "platform":
+                        # For platform driver, use vctl_install_platform_driver to properly install the agent
+                        if "platform driver" in message_lower:
+                            return self.call_function_tool("vctl_install_platform_driver", {})
+                        else:
+                            package_name = "volttron-platform-driver"
+                    elif package_name == "listener":
+                        # For listener, use vctl_install_listener_agent to properly install the agent
+                        return self.call_function_tool("vctl_install_listener_agent", {})
+                    elif package_name == "sqlite-historian":
+                        # For sqlite historian, use generic agent installer
+                        return self.call_function_tool("vctl_install_agent", {"agent_name": "sqlite-historian"})
+                    elif package_name == "platform_driver":
+                        # For platform_driver, use vctl_install_platform_driver
+                        return self.call_function_tool("vctl_install_platform_driver", {})
+                    
+                    # Look for multi-word package names that may have been truncated
+                    # Check for platform driver specifically in the original message
+                    elif package_name == "platform" and ("platform driver" in message_lower):
+                        return self.call_function_tool("vctl_install_platform_driver", {})
+                    
+                    # Check if this might be a VOLTTRON agent
+                    # If package name is in AVAILABLE_AGENTS, route to agent installer
+                    elif package_name in ["fake-driver", "bacnet-driver", "postgresql-historian", 
+                                        "protocol-proxy", "bacnet-proxy", "bacnet-scan", "platform-lookup"]:
+                        return self.call_function_tool("vctl_install_agent", {"agent_name": package_name})
+                    
+                    # For normal pip packages, proceed with pip install
+                    # Check if upgrade flag is present
+                    upgrade = "--upgrade" in message_lower or "upgrade" in message_lower
+                    
+                    return self.call_function_tool("pip_install", {"package_name": package_name, "upgrade": upgrade})
         
         # Pattern matching for pip uninstall commands
         pip_uninstall_patterns = [
