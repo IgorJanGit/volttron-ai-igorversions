@@ -23,7 +23,7 @@ from .volttron_commands import (
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_list_packages, install_fake_driver_complete, check_fake_driver_status,
-    show_fake_driver_data_logs
+    show_fake_driver_data_logs, vctl_start_all_agents
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -196,6 +196,11 @@ if agent:
     def check_fake_driver_status_tool() -> str:
         """Check the status of the fake driver installation."""
         return check_fake_driver_status()
+        
+    @agent.tool_plain
+    def start_all_agents_tool() -> str:
+        """Start all available VOLTTRON agents that are not currently running."""
+        return vctl_start_all_agents()
 
     @agent.tool_plain
     def show_fake_driver_logs_tool() -> str:
@@ -474,6 +479,18 @@ class AIService:
                 "schema": {
                     "name": "show_fake_driver_logs",
                     "description": "Show recent fake driver data and sensor readings from the logs",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "vctl_start_all_agents": {
+                "function": vctl_start_all_agents,
+                "schema": {
+                    "name": "vctl_start_all_agents",
+                    "description": "Start all available VOLTTRON agents that are not currently running",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -1792,6 +1809,13 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             'installed packages', 'list installed'
         ]):
             return self.call_function_tool("pip_list", {})
+        
+        # Pattern matching for "start all agents" command
+        if any(phrase in message_lower for phrase in [
+            'start all agents', 'start all agent', 'start everything', 'start them all',
+            'run all agents', 'run all agent', 'start every agent', 'get all agents running'
+        ]):
+            return self.call_function_tool("vctl_start_all_agents", {})
         
         # Enhanced pattern matching for agent commands with natural language
         # Look for agent references in conversational format

@@ -18,9 +18,15 @@ git clone https://github.com/VOLTTRON/volttron-ai.git
 cd volttron-ai
 ```
 
+
 2. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
+```
+
+3. **Install VOLTTRON dependency (required):**
+```bash
+pip install zope.event
 ```
 
 3. **Set up your environment**:

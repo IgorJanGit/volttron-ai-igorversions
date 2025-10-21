@@ -1072,6 +1072,96 @@ The agent you're trying to start doesn't exist in the system.
     except Exception as e:
         return f"Error starting agent: {str(e)}"
 
+def vctl_start_all_agents():
+    """Start all registered VOLTTRON agents that aren't already running."""
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return check_volttron_installation()
+        
+        # Check if VOLTTRON is running before trying to start agents
+        if not is_volttron_running_quick():
+            return """❌ **VOLTTRON is not running!**
+
+**Cannot start agents** - VOLTTRON platform must be running first.
+
+💡 **Please try this:**
+1. Ask me to "start volttron" first
+2. Wait a few seconds for it to start up
+3. Then try starting the agents again"""
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # First, get the current status to see which agents exist
+        status_result = subprocess.run(
+            [vctl_cmd, "status"], 
+            capture_output=True, 
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=10
+        )
+        
+        if status_result.returncode != 0:
+            return f"❌ Can't check agent status. VOLTTRON might not be responding properly."
+        
+        # Parse agents from status output
+        agents_to_start = []
+        if status_result.stdout:
+            status_lines = status_result.stdout.strip().split('\n')
+            for line in status_lines[1:]:  # Skip header line
+                if line.strip():
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        agent_id = parts[0]
+                        status = "running" if "running" in line.lower() else "stopped"
+                        if status != "running":
+                            agents_to_start.append(agent_id)
+        
+        if not agents_to_start:
+            return "✅ **All agents are already running!** Nothing to start."
+        
+        # Start each agent
+        started_agents = []
+        failed_agents = []
+        
+        for agent_id in agents_to_start:
+            result = subprocess.run(
+                [vctl_cmd, "start", agent_id],
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                started_agents.append(agent_id)
+            else:
+                failed_agents.append(agent_id)
+        
+        # Generate response message
+        message = "🚀 **Starting all agents...**\n\n"
+        
+        if started_agents:
+            message += f"✅ **{len(started_agents)} agent{'s' if len(started_agents) > 1 else ''} started successfully**\n"
+            if len(started_agents) <= 5:
+                message += "• " + "\n• ".join(started_agents) + "\n\n"
+        
+        if failed_agents:
+            message += f"❌ **{len(failed_agents)} agent{'s' if len(failed_agents) > 1 else ''} failed to start**\n"
+            if len(failed_agents) <= 5:
+                message += "• " + "\n• ".join(failed_agents) + "\n\n"
+        
+        return message.strip()
+        
+    except Exception as e:
+        return f"❌ Error starting all agents: {str(e)}"
+
 def vctl_stop_agent(agent_uuid_or_tag):
     """Stop a specific agent by UUID or tag."""
     try:
