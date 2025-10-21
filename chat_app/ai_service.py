@@ -1364,6 +1364,15 @@ Please specify which agent to uninstall. Examples:
                     self.awaiting_reversal_confirmation = False
                     return "No problem! I'll leave everything as is. What would you like to do next?"
             
+            # Special override for "what agents are running" query to ensure it always works
+            message_lower = message.lower().strip()
+            if (('what agents are running' in message_lower) or 
+                ('which agents are running' in message_lower) or
+                (('show' in message_lower or 'list' in message_lower) and 
+                 'running' in message_lower and 'agents' in message_lower)):
+                print("DIRECT OVERRIDE: Executing vctl_status for 'what agents are running' query")
+                return self.call_function_tool("vctl_status", {})
+            
             # Try direct command handling first
             direct_result = self._handle_direct_command(message)
             if direct_result:
@@ -1554,7 +1563,6 @@ Please specify which agent to uninstall. Examples:
             # Look for common command patterns in the response
             command_patterns = {
                 r"vctl\s+status": "vctl_status",
-                r"check.*status": "vctl_status", 
                 r"start.*volttron": "start_volttron",
                 r"start.*volltron": "start_volttron",  # Handle common misspelling
                 r"stop.*volttron": "stop_volttron",
@@ -1565,6 +1573,14 @@ Please specify which agent to uninstall. Examples:
                 r"show.*logs": "show_recent_logs",
                 r"health.*check": "vctl_health"
             }
+            
+            # Special handling for "what agents are running" and similar queries
+            if any(phrase in user_message.lower() for phrase in [
+                'what agents are running', 'which agents are running', 'show running agents',
+                'list running agents', 'show agents running', 'tell me running agents'
+            ]):
+                # Execute vctl_status directly for these specific queries
+                return self.call_function_tool("vctl_status", {})
             
             # Check user message and AI response for command patterns
             text_to_check = (user_message + " " + ai_response).lower()
@@ -1673,6 +1689,20 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             return self.call_function_tool("vctl_status", {})
         elif message_lower in ['volttron status', 'platform status', 'check volttron']:
             return self.call_function_tool("check_volttron_status", {})
+        # More comprehensive pattern matching for "what agents are running"
+        elif any(all(word in message_lower for word in combo) for combo in [
+            ['what', 'agents', 'running'], 
+            ['which', 'agents', 'running'],
+            ['show', 'running', 'agents'], 
+            ['list', 'running', 'agents'], 
+            ['show', 'agents', 'running'],
+            ['tell', 'running', 'agents'],
+            ['report', 'agents', 'running'],
+            ['agents', 'status']
+        ]):
+            print("Detected 'what agents are running' pattern - executing vctl_status directly")
+            # Directly show agent status when explicitly asked about running agents
+            return self.call_function_tool("vctl_status", {})
         
         # Individual agent status queries
         agent_status_patterns = [
@@ -1733,8 +1763,10 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             return self.call_function_tool("show_fake_driver_logs", {})
         
         # List commands
-        elif message_lower in ['list agents', 'available agents', 'what agents']:
+        elif message_lower in ['list available agents', 'available agents', 'what agents can i install']:
             return self.call_function_tool("list_available_agents", {})
+        elif message_lower in ['list agents', 'show agents', 'what agents', 'installed agents']:
+            return self.call_function_tool("list_agents_tool", {})
         
         # Uninstall/verification commands with pattern matching
         elif ('verify uninstall' in message_lower or 'check uninstall' in message_lower or 
