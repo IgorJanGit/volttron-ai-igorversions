@@ -23,7 +23,7 @@ from .volttron_commands import (
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_list_packages, install_fake_driver_complete, check_fake_driver_status,
-    show_fake_driver_data_logs, vctl_start_all_agents
+    show_fake_driver_data_logs, vctl_start_all_agents, vctl_force_remove_agent
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -196,6 +196,19 @@ if agent:
     def check_fake_driver_status_tool() -> str:
         """Check the status of the fake driver installation."""
         return check_fake_driver_status()
+        
+    @agent.tool_plain
+    def force_remove_agent_tool(agent_tag_or_uuid: str) -> str:
+        """Force remove an agent by tag or UUID using aggressive removal methods.
+        
+        Use this tool when standard removal fails or times out. This tool performs
+        multiple removal strategies to ensure the agent is completely removed from
+        the system, including direct file manipulation if standard removal fails.
+        
+        Args:
+            agent_tag_or_uuid: The tag or UUID of the agent to force remove
+        """
+        return vctl_force_remove_agent(agent_tag_or_uuid)
         
     @agent.tool_plain
     def start_all_agents_tool() -> str:
@@ -495,6 +508,23 @@ class AIService:
                         "type": "object",
                         "properties": {},
                         "required": []
+                    }
+                }
+            },
+            "vctl_force_remove_agent": {
+                "function": vctl_force_remove_agent,
+                "schema": {
+                    "name": "vctl_force_remove_agent",
+                    "description": "Force remove a VOLTTRON agent by tag or UUID, using aggressive methods to ensure complete removal even when standard removal fails",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "agent_tag": {
+                                "type": "string",
+                                "description": "The tag or UUID of the agent to force remove"
+                            }
+                        },
+                        "required": ["agent_tag"]
                     }
                 }
             }
@@ -1744,6 +1774,71 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         # Install commands
         elif message_lower in ['install listener', 'install listener agent']:
             return self.call_function_tool("vctl_install_listener_agent", {})
+            
+        # Agent removal commands with tag and force option - enhanced pattern matching
+        force_remove_patterns = [
+            "force remove agent", "force delete agent", "force remove tag", 
+            "remove agent force", "delete agent force", "remove with force",
+            "force uninstall", "forcibly remove", "forcibly delete",
+            "remove agent forcefully", "forcefully remove", "aggressively remove",
+            "remove agent aggressively", "force removal", "force agent removal",
+            "remove the stuck agent", "remove hanging agent", "kill agent",
+            "force kill agent", "permanently remove agent"
+        ]
+        
+        if any(pattern in message_lower for pattern in force_remove_patterns):
+            # Try to extract the tag/agent identifier
+            words = message_lower.split()
+            agent_tag = None
+            
+            # Try pattern: agent DIGIT (or single letter)
+            digit_pattern = re.search(r'agent\s+([0-9a-z])(?:\s+|$)', message_lower)
+            if digit_pattern:
+                agent_tag = digit_pattern.group(1)
+                return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
+                
+            # Try direct number pattern - standalone digits
+            digit_pattern = re.search(r'(?:remove|delete|kill)\s+([0-9])(?:\s+|$)', message_lower)
+            if digit_pattern:
+                agent_tag = digit_pattern.group(1)
+                return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
+                
+            # Look for the word "tag" and get the next word
+            if "tag" in words:
+                tag_index = words.index("tag")
+                if tag_index < len(words) - 1:
+                    agent_tag = words[tag_index + 1]
+                    return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
+            
+            # Look for patterns like "force remove agent [tag]"
+            for keyword in ["agent", "with", "tagged", "named", "number", "id", "uuid", "identity"]:
+                if keyword in words:
+                    keyword_index = words.index(keyword)
+                    if keyword_index < len(words) - 1:
+                        agent_tag = words[keyword_index + 1]
+                        # Skip common words that aren't likely to be tags
+                        if agent_tag not in ["force", "forcefully", "using", "that", "is", "was", "the", "a"]:
+                            return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
+            
+            # Handle "force remove 9" type pattern (just a number)
+            for force_word in ["force", "forcefully", "aggressively"]:
+                if force_word in words:
+                    force_index = words.index(force_word)
+                    # Check words after "force"
+                    for i in range(force_index+1, min(force_index+5, len(words))):
+                        if words[i].isdigit() or (len(words[i]) == 1 and words[i].isalpha()):
+                            agent_tag = words[i]
+                            return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
+            
+            # If we couldn't extract a tag, ask for clarification
+            return """Which agent would you like to force remove? Please specify the agent tag or number.
+
+Examples:
+• "Force remove agent 9"
+• "Force remove platform.driver"
+• "Force remove with tag listener"
+
+You can use "vctl status" to see all agents and their tags."""
         
         # Fake driver commands
         elif any(phrase in message_lower for phrase in [

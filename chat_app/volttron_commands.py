@@ -1479,6 +1479,223 @@ def vctl_uninstall_agent(agent_uuid_or_tag):
     except Exception as e:
         return f"❌ Error uninstalling agent '{agent_uuid_or_tag}': {str(e)}"
 
+def vctl_force_remove_agent(agent_tag_or_uuid):
+    """Force remove a VOLTTRON agent by tag or UUID using aggressive removal methods.
+    
+    This function uses multiple approaches to ensure agent removal even when the
+    standard methods fail or timeout:
+    1. Try direct removal with force flag
+    2. If that fails, try direct file manipulation in VOLTTRON_HOME
+    3. Use shorter timeouts to avoid hanging
+    
+    Args:
+        agent_tag_or_uuid: The tag or UUID of the agent to remove
+        
+    Returns:
+        str: Status message with the result of the operation
+    """
+    try:
+        import os
+        import shutil
+        import glob
+        import json
+        import time
+        
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return check_volttron_installation()
+        
+        if not agent_tag_or_uuid:
+            return "❌ Please specify an agent tag or UUID to remove. Use 'vctl status' to see available agents."
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # First gather information about the agent to make sure we can find it by UUID later
+        status_result = subprocess.run(
+            [vctl_cmd, "status"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=volttron_home,
+            timeout=10
+        )
+        
+        # Try to find the agent's UUID if a tag was provided
+        agent_uuid = agent_tag_or_uuid  # Default to assuming it's already a UUID
+        found_in_status = False
+        agent_name = "unknown"
+        
+        if status_result.returncode == 0 and status_result.stdout:
+            lines = status_result.stdout.strip().split('\n')
+            for line in lines:
+                if agent_tag_or_uuid in line:
+                    found_in_status = True
+                    parts = line.split()
+                    if len(parts) >= 1:
+                        agent_uuid = parts[0]  # First column is UUID
+                        agent_name = parts[1] if len(parts) > 1 else "unknown"
+                    break
+        
+        messages = []
+        messages.append(f"🔥 **Aggressively removing agent '{agent_tag_or_uuid}'...**")
+        
+        # Try stopping the agent first with short timeout
+        messages.append(f"🛑 First stopping agent...")
+        try:
+            stop_result = subprocess.run(
+                [vctl_cmd, "stop", agent_uuid],
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=5  # Short timeout to avoid hanging
+            )
+            if stop_result.returncode == 0:
+                messages.append("✅ Agent stopped successfully")
+            else:
+                messages.append("⚠️ Agent may still be running (stop command failed)")
+        except subprocess.TimeoutExpired:
+            messages.append("⚠️ Stop command timed out - proceeding anyway")
+            
+        # Method 1: Try direct removal with force flag and short timeout
+        messages.append(f"🗑️ Attempting force removal with vctl...")
+        removal_success = False
+        
+        # Try by tag first if that's what was provided
+        if agent_tag_or_uuid != agent_uuid:
+            try:
+                tag_result = subprocess.run(
+                    [vctl_cmd, "remove", "--tag", agent_tag_or_uuid, "-f"],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    cwd=volttron_home,
+                    timeout=10  # Shorter timeout
+                )
+                if tag_result.returncode == 0:
+                    messages.append("✅ Successfully removed by tag")
+                    removal_success = True
+            except subprocess.TimeoutExpired:
+                messages.append("⚠️ Tag removal timed out - trying alternate methods")
+        
+        # Try by UUID if we haven't succeeded yet
+        if not removal_success:
+            try:
+                uuid_result = subprocess.run(
+                    [vctl_cmd, "remove", agent_uuid, "-f"],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    cwd=volttron_home,
+                    timeout=10  # Shorter timeout
+                )
+                if uuid_result.returncode == 0:
+                    messages.append("✅ Successfully removed by UUID")
+                    removal_success = True
+            except subprocess.TimeoutExpired:
+                messages.append("⚠️ UUID removal timed out - trying alternate methods")
+        
+        # Method 2: Direct file manipulation (more aggressive)
+        if not removal_success:
+            messages.append("🛠️ Trying direct file removal...")
+            
+            # Path patterns to check and remove
+            agents_dir = os.path.join(volttron_home, "agents")
+            if os.path.exists(agents_dir):
+                removed_dirs = 0
+                
+                # Pattern 1: UUID-named directories
+                uuid_dirs = glob.glob(f"{agents_dir}/{agent_uuid}*")
+                for dir_path in uuid_dirs:
+                    try:
+                        shutil.rmtree(dir_path)
+                        removed_dirs += 1
+                    except Exception:
+                        pass
+                
+                # Pattern 2: Name-based directories that might contain the agent
+                if agent_name != "unknown":
+                    name_pattern = agent_name.replace("volttron-", "").replace("-", "_").split("-")[0]
+                    name_dirs = glob.glob(f"{agents_dir}/*{name_pattern}*")
+                    for dir_path in name_dirs:
+                        # Check if this directory contains the agent's UUID in its config
+                        try:
+                            agent_config = os.path.join(dir_path, "agent-data/agentconfig")
+                            if os.path.exists(agent_config):
+                                with open(agent_config, 'r') as f:
+                                    config_text = f.read()
+                                    if agent_uuid in config_text:
+                                        shutil.rmtree(dir_path)
+                                        removed_dirs += 1
+                        except Exception:
+                            pass
+                
+                if removed_dirs > 0:
+                    messages.append(f"✅ Removed {removed_dirs} agent directories")
+                    removal_success = True
+                else:
+                    messages.append("⚠️ No matching agent directories found")
+        
+        # Method 3: Clean up registry
+        try:
+            registry_file = os.path.join(volttron_home, "configuration_store/platform.driver/registry_configs")
+            if os.path.exists(registry_file):
+                with open(registry_file, 'r') as f:
+                    registry = json.load(f)
+                if agent_uuid in registry or agent_tag_or_uuid in registry:
+                    if agent_uuid in registry:
+                        del registry[agent_uuid]
+                    if agent_tag_or_uuid in registry:
+                        del registry[agent_tag_or_uuid]
+                    with open(registry_file, 'w') as f:
+                        json.dump(registry, f)
+                    messages.append("✅ Cleaned up registry entries")
+                    removal_success = True
+        except Exception:
+            pass
+        
+        # Final verification
+        final_status = "✅ SUCCESS" if removal_success else "⚠️ PARTIAL"
+        
+        # Try to verify removal by checking if the agent still appears in status
+        try:
+            time.sleep(1)  # Brief pause to let changes take effect
+            verify_result = subprocess.run(
+                [vctl_cmd, "status"],
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=volttron_home,
+                timeout=10
+            )
+            
+            if verify_result.returncode == 0 and verify_result.stdout:
+                if agent_uuid not in verify_result.stdout and agent_tag_or_uuid not in verify_result.stdout:
+                    messages.append("✅ Verification passed: Agent no longer appears in status")
+                    removal_success = True
+                else:
+                    messages.append("⚠️ Agent may still appear in status, but files should be removed")
+        except Exception:
+            messages.append("⚠️ Could not verify final status")
+        
+        messages.append(f"\n{final_status}: Agent '{agent_tag_or_uuid}' force-removal {removal_success and 'completed' or 'attempted'}")
+        
+        if not removal_success:
+            messages.append("""
+💡 **For stubborn agents:**
+• Restart VOLTTRON with: "restart volttron" 
+• Then try removing again
+• Or manually delete files from VOLTTRON_HOME/agents directory""")
+        
+        return "\n".join(messages)
+    
+    except Exception as e:
+        return f"❌ Error during force-removal: {str(e)}"
+
 def verify_agent_uninstalled(agent_identifier):
     """Comprehensive verification to ensure an agent has been completely uninstalled.
     
