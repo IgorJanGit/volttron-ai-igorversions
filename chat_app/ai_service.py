@@ -75,7 +75,44 @@ if agent:
     @agent.tool_plain
     def list_agents_tool() -> str:
         """List all installed VOLTTRON agents."""
-        return vctl_list_agents()
+        # Import subprocess locally to avoid any import issues
+        import subprocess
+        import os
+        
+        # Hard-coded paths that we know work
+        volttron_home = "/home/igorj/volttron-fresh/volttron_home"
+        vctl_path = "/home/igorj/volttron-fresh/venv-fresh/bin/vctl"
+        
+        # Directly run vctl status with the correct paths
+        try:
+            env = os.environ.copy()
+            env["VOLTTRON_HOME"] = volttron_home
+            
+            # Run the command directly
+            result = subprocess.run(
+                [vctl_path, "status"],
+                capture_output=True,
+                text=True,
+                env=env
+            )
+            
+            if result.returncode == 0:
+                # Process the output to make it user-friendly
+                output = result.stdout
+                if output.strip():
+                    # Log what we're returning to help debug
+                    print(f"DEBUG list_agents_tool returning successful status output: {output}")
+                    return f"🤖 **Installed VOLTTRON Agents:**\n\n```\n{output}\n```"
+                else:
+                    print("DEBUG list_agents_tool: Empty output from vctl status")
+                    return "No agents are currently installed."
+            else:
+                error = result.stderr or result.stdout or "Unknown error"
+                print(f"DEBUG list_agents_tool command failed: {error}")
+                return f"Error listing agents: {error}"
+        except Exception as e:
+            print(f"DEBUG list_agents_tool exception: {str(e)}")
+            return f"Failed to list agents: {str(e)}"
 
     @agent.tool_plain
     def start_agent_tool(agent_uuid: str) -> str:

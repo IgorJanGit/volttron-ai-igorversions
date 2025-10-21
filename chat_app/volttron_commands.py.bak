@@ -114,48 +114,21 @@ def format_volttron_warnings(stderr_output):
         return ""  # Return empty string on error
 
 def find_volttron_command():
-    """Find volttron command in various locations, prioritizing running instance."""
-    
-    # HARDCODED SOLUTION: Return the known working volttron path
-    volttron_path = "/home/igorj/volttron-fresh/venv-fresh/bin/volttron"
-    print(f"DEBUG: Using hardcoded volttron path: {volttron_path}")
-    return volttron_path
-    
-    # The code below is kept for reference but is bypassed
-    # First, try to detect from running VOLTTRON process
-    try:
-        import psutil
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
-                    # Found a volttron process, get its path
-                    cmd_path = proc.cmdline()[0] if proc.cmdline() else None
-                    if cmd_path and os.path.exists(cmd_path) and 'volttron' in cmd_path:
-                        print(f"DEBUG: Found volttron from running process: {cmd_path}")
-                        return cmd_path
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except ImportError:
-        # psutil not available, skip this method
-        pass
-    
-    # Check for fresh VOLTTRON installation
+    """Find volttron command in various locations, preferring fresh installation."""
+    # First, check for fresh VOLTTRON installation
     fresh_volttron = os.path.expanduser("~/volttron-fresh/venv-fresh/bin/volttron")
     if os.path.exists(fresh_volttron):
-        print(f"DEBUG: Using volttron from fresh installation: {fresh_volttron}")
         return fresh_volttron
     
-    # Check the current project's virtual environment
+    # Second, check the current project's virtual environment
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_env_volttron = os.path.join(os.path.dirname(current_dir), "env", "bin", "volttron")
     if os.path.exists(project_env_volttron):
-        print(f"DEBUG: Using volttron from project env: {project_env_volttron}")
         return project_env_volttron
     
-    # Check if it's in PATH
+    # Third, check if it's in PATH
     volttron_cmd = shutil.which("volttron")
     if volttron_cmd:
-        print(f"DEBUG: Using volttron from PATH: {volttron_cmd}")
         return volttron_cmd
     
     # Common VOLTTRON installation locations
@@ -169,7 +142,6 @@ def find_volttron_command():
         os.path.expanduser("~/VOLTTRON/env/bin/volttron"),
         os.path.expanduser("~/VOLTTRON/AI/env/bin/volttron"),
         # Work directory installations (Igor's setup)
-        "/home/igorj/volttron-fresh/venv-fresh/bin/volttron",  # Added based on ps output
         "/home/igor/Work/Volttron_eclispe/env/bin/volttron",
         "/home/igor/Work/Volttron_eclispe/volttron/bin/volttron",
         # Generic work directory patterns
@@ -188,52 +160,21 @@ def find_volttron_command():
     return None
 
 def find_vctl_command():
-    """Find vctl command in various locations, prioritizing running instance."""
-    
-    # HARDCODED SOLUTION: Return the known working vctl path
-    vctl_path = "/home/igorj/volttron-fresh/venv-fresh/bin/vctl"
-    print(f"DEBUG: Using hardcoded vctl path: {vctl_path}")
-    return vctl_path
-    
-    # The code below is kept for reference but is bypassed
-    # First, try to detect from running VOLTTRON process
-    try:
-        import psutil
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
-                    # Found a volttron process, get its path
-                    cmd_path = proc.cmdline()[0] if proc.cmdline() else None
-                    if cmd_path and os.path.exists(cmd_path):
-                        # Get the bin directory
-                        bin_dir = os.path.dirname(cmd_path)
-                        vctl_path = os.path.join(bin_dir, "vctl")
-                        if os.path.isfile(vctl_path) and os.access(vctl_path, os.X_OK):
-                            print(f"DEBUG: Found vctl from running process: {vctl_path}")
-                            return vctl_path
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except ImportError:
-        # psutil not available, skip this method
-        pass
-    
-    # Check for fresh VOLTTRON installation
+    """Find vctl command in various locations, preferring fresh installation."""
+    # First, check for fresh VOLTTRON installation
     fresh_vctl = os.path.expanduser("~/volttron-fresh/venv-fresh/bin/vctl")
     if os.path.exists(fresh_vctl):
-        print(f"DEBUG: Using vctl from fresh installation: {fresh_vctl}")
         return fresh_vctl
     
-    # Check the current project's virtual environment
+    # Second, check the current project's virtual environment
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_env_vctl = os.path.join(os.path.dirname(current_dir), "env", "bin", "vctl")
     if os.path.exists(project_env_vctl):
-        print(f"DEBUG: Using vctl from project env: {project_env_vctl}")
         return project_env_vctl
     
-    # Check if it's in PATH
+    # Third, check if it's in PATH
     vctl_cmd = shutil.which("vctl")
     if vctl_cmd:
-        print(f"DEBUG: Using vctl from PATH: {vctl_cmd}")
         return vctl_cmd
     
     # If volttron is found, vctl should be in the same directory
@@ -241,10 +182,8 @@ def find_vctl_command():
     if volttron_cmd:
         vctl_path = os.path.join(os.path.dirname(volttron_cmd), "vctl")
         if os.path.isfile(vctl_path) and os.access(vctl_path, os.X_OK):
-            print(f"DEBUG: Using vctl from volttron path: {vctl_path}")
             return vctl_path
     
-    print("DEBUG: Could not find vctl command")
     return None
 
 def get_volttron_env_path():
@@ -266,62 +205,19 @@ def get_volttron_env_path():
 
 def get_volttron_home():
     """Get the VOLTTRON_HOME directory, preferring fresh installation if available."""
-    # HARDCODED SOLUTION: Set the known working VOLTTRON_HOME
-    volttron_home_path = "/home/igorj/volttron-fresh/volttron_home"
-    print(f"DEBUG: Using hardcoded VOLTTRON_HOME: {volttron_home_path}")
-    return volttron_home_path
-    
-    # The code below is kept for reference but is bypassed
     # Check if VOLTTRON_HOME is explicitly set in environment first
     env_volttron_home = os.getenv("VOLTTRON_HOME")
     if env_volttron_home:
-        print(f"DEBUG: Using VOLTTRON_HOME from environment: {env_volttron_home}")
         return env_volttron_home
     
-    # Check for paths that might contain VOLTTRON_HOME
-    possible_paths = [
-        # Fresh installation path
-        os.path.expanduser("~/volttron-fresh/volttron_home"),
-        # Standard pip installation path
-        os.path.expanduser("~/.volttron"),
-        # Other common paths
-        os.path.expanduser("~/volttron_home"),
-        "/var/lib/volttron",
-        "/tmp/volttron_home"
-    ]
+    # Check for fresh VOLTTRON installation
+    fresh_volttron_home = os.path.expanduser("~/volttron-fresh/volttron_home")
+    if os.path.exists(fresh_volttron_home):
+        return fresh_volttron_home
     
-    # Check if we can detect VOLTTRON_HOME from running process
-    try:
-        # Check if volttron is running and extract environment
-        import psutil
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
-            try:
-                # Look for volttron process
-                if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
-                    # Try to get VOLTTRON_HOME from process environment
-                    if proc.environ() and 'VOLTTRON_HOME' in proc.environ():
-                        volttron_home_from_proc = proc.environ()['VOLTTRON_HOME']
-                        print(f"DEBUG: Found VOLTTRON_HOME from running process: {volttron_home_from_proc}")
-                        return volttron_home_from_proc
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except ImportError:
-        # psutil not available, skip this method
-        pass
-        
-    # Check each path to see if it exists and looks like a VOLTTRON_HOME
-    for path in possible_paths:
-        if os.path.exists(path):
-            # Check if this looks like a valid VOLTTRON_HOME (has key directories)
-            if (os.path.exists(os.path.join(path, "agents")) or 
-                os.path.exists(os.path.join(path, "certificates"))):
-                print(f"DEBUG: Found valid VOLTTRON_HOME at: {path}")
-                return path
-    
-    # If no valid VOLTTRON_HOME found, create and use the default
+    # Use the standard VOLTTRON home directory (matches pip installation default)
     default_volttron_home = os.path.expanduser("~/.volttron")
     os.makedirs(default_volttron_home, exist_ok=True)
-    print(f"DEBUG: Using default VOLTTRON_HOME: {default_volttron_home}")
     return default_volttron_home
 
 def check_volttron_environment():
@@ -1175,66 +1071,137 @@ def is_volttron_running():
 
 def vctl_list_agents():
     """List all installed agents with their details."""
-    try:
-        # Hard-coded paths that we know work
-        volttron_home = "/home/igorj/volttron-fresh/volttron_home"
-        vctl_path = "/home/igorj/volttron-fresh/venv-fresh/bin/vctl"
+    # IMPORTANT: This function has reliability issues.
+    # We're going to just delegate to the vctl_status function which is more reliable
+    # This ensures agents are consistently reported whether using status or list_agents
+    print("Using vctl_status as a more reliable replacement for vctl_list_agents")
+    return vctl_status(explain=False)
+        try:
+            vctl_cmd = find_vctl_command()
+            volttron_home = get_volttron_home()
+            
+            if not vctl_cmd:
+                return check_volttron_installation()
+            
+            # First check if VOLTTRON is running via direct process check (most reliable)
+            is_running = False
+            try:
+                process_check = subprocess.run(
+                    "ps aux | grep bin/volttron | grep -v grep",
+                    shell=True,
+                    capture_output=True, text=True, timeout=5
+                )
+                is_running = process_check.returncode == 0 and process_check.stdout.strip()
+                if not is_running:
+                    return "❌ VOLTTRON is not running. Please start VOLTTRON first."
+            except Exception:
+                pass
+            
+            # Set environment variables
+            env = os.environ.copy()
+            env["VOLTTRON_HOME"] = volttron_home
+            
+            # Try with shell=True to ensure proper environment variable handling
+            cmd_str = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} list"
+            print(f"DEBUG: Running vctl_list_agents with command: {cmd_str}")
+            result = subprocess.run(
+                cmd_str,
+                shell=True,
+                capture_output=True, 
+                text=True,
+                timeout=15  # Add timeout to prevent hanging
+            )
         
-        print(f"DEBUG: Running vctl list_agents with fixed paths: VOLTTRON_HOME={volttron_home}, vctl={vctl_path}")
+        # Print detailed output for debugging
+        print(f"vctl_list_agents direct command result: {result.returncode}")
+        print(f"vctl_list_agents stdout: {result.stdout}")
+        print(f"vctl_list_agents stderr: {result.stderr}")
         
-        # Set environment variables
-        env = os.environ.copy()
-        env["VOLTTRON_HOME"] = volttron_home
+        # Format any system warnings
+        warning_msg = format_volttron_warnings(result.stderr) if result.stderr else ""
         
-        # Run the command directly with shell=True to ensure proper environment handling
-        cmd_str = f"export VOLTTRON_HOME={volttron_home} && {vctl_path} status"
-        result = subprocess.run(
-            cmd_str,
-            shell=True,
-            capture_output=True, 
-            text=True,
-            env=env,
-            timeout=15
-        )
+        # ALWAYS get vctl status output as a reliable source of truth
+        try:
+            status_cmd = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} status"
+            print(f"DEBUG: Running fallback status command: {status_cmd}")
+            status_result = subprocess.run(
+                status_cmd,
+                shell=True,
+                capture_output=True, 
+                text=True,
+                timeout=15
+            )
+            print(f"vctl status fallback result: {status_result.returncode}")
+            print(f"vctl status fallback stdout: {status_result.stdout}")
+            status_output = status_result.stdout.strip() if status_result.returncode == 0 else ""
+        except Exception as status_err:
+            print(f"Error getting status fallback: {str(status_err)}")
+            status_output = ""
         
-        # Print detailed debug info
-        print(f"DEBUG: vctl_list_agents direct command result code: {result.returncode}")
-        print(f"DEBUG: vctl_list_agents stdout: {result.stdout}")
-        print(f"DEBUG: vctl_list_agents stderr: {result.stderr}")
+        # First, check if status shows agents regardless of list command results
+        if status_output and "UUID" in status_output and "No installed Agents found" not in status_output and any(line.strip() for line in status_output.split("\n")[1:]):
+            # Status shows agents, so use that data (it's more reliable)
+            try:
+                # Make the status output more readable
+                readable_status = make_status_readable(status_output)
+                return f"{warning_msg}📋 Installed Agents:\n\n{readable_status}"
+            except Exception as format_error:
+                print(f"Error formatting status: {str(format_error)}")
+                return f"{warning_msg}📋 Installed Agents:\n\n{status_output}"
         
+        # Otherwise fall back to list command results
         if result.returncode == 0:
-            # Combine stdout and stderr to get full output including header
-            combined_output = ""
-            if result.stderr and "UUID" in result.stderr:
-                combined_output = result.stderr.strip() + "\n"
-            
-            if result.stdout:
-                combined_output += result.stdout.strip()
-            
-            combined_output = combined_output.strip()
-            
-            if combined_output:
-                # Process the output to make it more readable
-                lines = combined_output.split('\n')
-                if len(lines) >= 2:  # If there's a header and at least one agent
-                    # Use make_status_readable for nicer formatting if available
-                    try:
-                        readable_status = make_status_readable(combined_output)
-                        return f"🤖 **Installed VOLTTRON Agents:**\n\n{readable_status}"
-                    except Exception as format_error:
-                        # Fallback to simple formatting
-                        print(f"DEBUG: Error formatting agent list: {str(format_error)}")
-                        return f"🤖 **Installed VOLTTRON Agents:**\n\n```\n{combined_output}\n```"
-                else:
-                    return "No agents are currently installed."
-            else:
-                return "No agents are currently installed."
+            output = result.stdout.strip()
+            if not output:
+                return f"{warning_msg}📋 No agents are currently installed."
+            return f"{warning_msg}📋 Installed Agents:\n\n{output}"
         else:
-            error = result.stderr or "Unknown error"
-            return f"Error listing agents: {error}"
+            error_msg = result.stderr or result.stdout or "Unknown error"            
+            return f"{warning_msg}❌ Error listing agents: {error_msg}"
+    except subprocess.TimeoutExpired:
+        # If the list command times out, try to fall back to status
+        try:
+            status_cmd = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} status"
+            status_result = subprocess.run(
+                status_cmd,
+                shell=True,
+                capture_output=True, 
+                text=True,
+                timeout=10  # shorter timeout for fallback
+            )
+            
+            if status_result.returncode == 0 and status_result.stdout and "UUID" in status_result.stdout:
+                try:
+                    readable_status = make_status_readable(status_result.stdout.strip())
+                    return f"⚠️ The list command timed out, but I found these agents:\n\n{readable_status}"
+                except:
+                    return f"⚠️ The list command timed out, but I found these agents:\n\n{status_result.stdout.strip()}"
+        except:
+            pass
+            
+        return "⚠️ Command timed out while listing agents. VOLTTRON might be busy or not responding."
     except Exception as e:
-        print(f"DEBUG: Exception in vctl_list_agents: {str(e)}")
-        return f"Failed to list agents: {str(e)}"
+        # One more try with status as fallback on any error
+        try:
+            status_cmd = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} status"
+            status_result = subprocess.run(
+                status_cmd,
+                shell=True,
+                capture_output=True, 
+                text=True,
+                timeout=10
+            )
+            
+            if status_result.returncode == 0 and status_result.stdout and "UUID" in status_result.stdout:
+                try:
+                    readable_status = make_status_readable(status_result.stdout.strip())
+                    return f"⚠️ There was an error listing agents, but I found these:\n\n{readable_status}"
+                except:
+                    return f"⚠️ There was an error listing agents, but I found these:\n\n{status_result.stdout.strip()}"
+        except:
+            pass
+            
+        return f"Error running vctl list: {str(e)}"
 
 def vctl_start_agent(agent_uuid_or_tag):
     """Start a specific agent by UUID or tag."""
