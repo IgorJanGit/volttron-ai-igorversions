@@ -89,10 +89,8 @@ class TestPydanticAIFunctionTools(unittest.TestCase):
             'vctl_health_tool',
             'install_platform_driver_tool',
             'install_fake_driver_library_tool',
-            'create_fake_driver_config_tool',
-            'store_fake_driver_config_tool',
-            'setup_fake_driver_monitoring_tool',
-            'subscribe_to_fake_data_tool',
+            'show_fake_driver_logs_tool',
+            'watch_fake_driver_logs_tool',
             'show_recent_logs_tool',
             'check_volttron_installation_tool',
             'kill_existing_processes_tool',
@@ -112,7 +110,7 @@ class TestPydanticAIFunctionTools(unittest.TestCase):
             # Note: In practice, these are registered with the agent via decorators
             
         print(f"✅ All {len(expected_tool_functions)} tool functions follow @agent.tool_plain pattern")
-        self.assertEqual(len(expected_tool_functions), 21)  # Verify we have the right count
+        self.assertEqual(len(expected_tool_functions), 19)  # Verify we have the right count
         
     def test_ai_service_pydantic_integration(self):
         """Test AIService integration with Pydantic AI agent."""

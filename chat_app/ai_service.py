@@ -17,13 +17,12 @@ from .volttron_commands import (
     start_volttron, stop_volttron, check_volttron_status, simple_volttron_status_check, read_volttron_log,
     vctl_status, vctl_status_detailed, vctl_list_agents, vctl_start_agent, vctl_stop_agent, vctl_health,
     show_formatting_test, get_detailed_installation_help, get_volttron_next_steps,
-    vctl_install_platform_driver, install_fake_driver_library, create_fake_driver_config,
-    store_fake_driver_config, setup_fake_driver_monitoring, subscribe_to_fake_data,
-    show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
+    vctl_install_platform_driver, show_recent_logs, check_volttron_installation, kill_existing_volttron_processes,
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
-    pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_complete, check_fake_driver_status,
-    show_fake_driver_data_logs, vctl_start_all_agents, vctl_force_remove_agent
+    pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
+    show_fake_driver_logs, watch_fake_driver_logs, setup_fake_driver_complete,
+    vctl_start_all_agents, vctl_force_remove_agent
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -143,31 +142,6 @@ if agent:
         return vctl_install_platform_driver()
 
     @agent.tool_plain
-    def install_fake_driver_library_tool() -> str:
-        """Install the fake driver library for testing."""
-        return install_fake_driver_library()
-
-    @agent.tool_plain
-    def create_fake_driver_config_tool() -> str:
-        """Create configuration for a fake driver."""
-        return create_fake_driver_config()
-
-    @agent.tool_plain
-    def store_fake_driver_config_tool() -> str:
-        """Store the fake driver configuration."""
-        return store_fake_driver_config()
-
-    @agent.tool_plain
-    def setup_fake_driver_monitoring_tool() -> str:
-        """Setup monitoring for the fake driver."""
-        return setup_fake_driver_monitoring()
-
-    @agent.tool_plain
-    def subscribe_to_fake_data_tool() -> str:
-        """Subscribe to fake driver data."""
-        return subscribe_to_fake_data()
-
-    @agent.tool_plain
     def show_recent_logs_tool() -> str:
         """Show recent VOLTTRON logs."""
         return show_recent_logs()
@@ -235,15 +209,33 @@ if agent:
         return pip_list_packages()
 
     @agent.tool_plain
-    def install_fake_driver_tool() -> str:
-        """Install and configure the complete VOLTTRON fake driver setup."""
-        return install_fake_driver_complete()
+    def install_fake_driver_library_tool() -> str:
+        """Install the volttron-lib-fake-driver package for testing and development."""
+        return install_fake_driver_library()
 
     @agent.tool_plain
-    def check_fake_driver_status_tool() -> str:
-        """Check the status of the fake driver installation."""
-        return check_fake_driver_status()
+    def show_fake_driver_logs_tool(num_lines: int = 50) -> str:
+        """Show recent fake driver data from VOLTTRON logs.
         
+        Args:
+            num_lines: Number of recent log lines to check (default: 50)
+        """
+        return show_fake_driver_logs(num_lines)
+
+    @agent.tool_plain
+    def watch_fake_driver_logs_tool() -> str:
+        """Get instructions for watching fake driver logs in real-time using tail -f."""
+        return watch_fake_driver_logs()
+
+    @agent.tool_plain
+    def setup_fake_driver_complete_tool() -> str:
+        """Complete automated setup of fake driver - installs library, platform driver, configures, and starts everything.
+        
+        This is the ONE COMMAND to fully set up the fake driver so users can immediately see fake data in logs.
+        Use this when user wants to 'set up fake driver' or 'install fake driver' - it does EVERYTHING.
+        """
+        return setup_fake_driver_complete()
+
     @agent.tool_plain
     def force_remove_agent_tool(agent_tag_or_uuid: str) -> str:
         """Force remove an agent by tag or UUID using aggressive removal methods.
@@ -261,11 +253,6 @@ if agent:
     def start_all_agents_tool() -> str:
         """Start all available VOLTTRON agents that are not currently running."""
         return vctl_start_all_agents()
-
-    @agent.tool_plain
-    def show_fake_driver_logs_tool() -> str:
-        """Show recent fake driver data from the logs."""
-        return show_fake_driver_data_logs()
 
 class AIService:
     """Service for handling AI model interactions with function tools support."""
@@ -556,23 +543,11 @@ class AIService:
                     }
                 }
             },
-            "install_fake_driver": {
-                "function": install_fake_driver_complete,
+            "install_fake_driver_library": {
+                "function": install_fake_driver_library,
                 "schema": {
-                    "name": "install_fake_driver",
-                    "description": "Install and configure the complete VOLTTRON fake driver setup with simulated sensor data",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            },
-            "check_fake_driver_status": {
-                "function": check_fake_driver_status,
-                "schema": {
-                    "name": "check_fake_driver_status", 
-                    "description": "Check the status of the fake driver installation and configuration",
+                    "name": "install_fake_driver_library",
+                    "description": "Install the volttron-lib-fake-driver package for testing and simulating device data",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -581,10 +556,40 @@ class AIService:
                 }
             },
             "show_fake_driver_logs": {
-                "function": show_fake_driver_data_logs,
+                "function": show_fake_driver_logs,
                 "schema": {
                     "name": "show_fake_driver_logs",
-                    "description": "Show recent fake driver data and sensor readings from the logs",
+                    "description": "Show recent fake driver data and activity from VOLTTRON logs",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "num_lines": {
+                                "type": "integer",
+                                "description": "Number of recent log lines to check (default: 50)",
+                                "default": 50
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
+            "watch_fake_driver_logs": {
+                "function": watch_fake_driver_logs,
+                "schema": {
+                    "name": "watch_fake_driver_logs",
+                    "description": "Get instructions for watching fake driver logs in real-time using tail -f command",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "setup_fake_driver_complete": {
+                "function": setup_fake_driver_complete,
+                "schema": {
+                    "name": "setup_fake_driver_complete",
+                    "description": "Complete automated setup of fake driver - installs library, platform driver, configures, and starts everything so user can immediately see fake data in logs",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -618,6 +623,18 @@ class AIService:
                             }
                         },
                         "required": ["agent_tag"]
+                    }
+                }
+            },
+            "show_recent_logs": {
+                "function": show_recent_logs,
+                "schema": {
+                    "name": "show_recent_logs",
+                    "description": "Show recent VOLTTRON logs with focus on fake driver and agent activity",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
                     }
                 }
             }
@@ -975,16 +992,7 @@ class AIService:
         description = option['description'].lower()
         
         # Map option titles to VOLTTRON commands based on common patterns
-        if 'fake driver library' in title or 'install fake driver library' in title or 'pypi' in description:
-            self.fake_driver_setup_state = "library_installed"
-            return install_fake_driver_library()
-        elif 'config' in title and ('create' in title or 'directory' in title or 'files' in title):
-            self.fake_driver_setup_state = "config_created"
-            return create_fake_driver_config()
-        elif 'fake driver config' in title or 'create the fake driver config' in title:
-            self.fake_driver_setup_state = "config_created"
-            return create_fake_driver_config()
-        elif 'current agents' in title or 'what\'s running' in title or 'show' in title and 'agents' in title:
+        if 'current agents' in title or 'what\'s running' in title or 'show' in title and 'agents' in title:
             return vctl_status()
         elif 'platform driver' in title and 'install' in title:
             self._track_action("install_agent", {"agent_type": "platform driver"})
@@ -1021,9 +1029,6 @@ class AIService:
             return list_available_agents()
         elif 'volttron status' in title or 'check' in title and 'status' in title or 'healthy' in title:
             return check_volttron_status()
-        elif 'listener agent' in title or 'monitoring' in title:
-            self.fake_driver_setup_state = "monitoring_setup"
-            return setup_fake_driver_monitoring()
         elif 'historian agent' in title:
             return "📊 Setting up Historian Agent would go here - this feature is coming soon!"
         elif 'weather agent' in title:
@@ -1123,28 +1128,8 @@ Please specify which agent to uninstall. Examples:
 
 💡 **Tip:** Use **"List agents"** first to see available agents with their UUIDs."""
         elif 'config directory' in title or 'create the config directory' in title:
-            self.fake_driver_setup_state = "config_created"
-            return create_fake_driver_config()  # This handles directory creation
-        elif 'fake.config file' in title or 'generate the fake.config' in title:
-            self.fake_driver_setup_state = "config_stored"
-            return store_fake_driver_config()  # This handles storing config
-        elif 'fake.csv registry' in title or 'registry file' in title:
-            self.fake_driver_setup_state = "monitoring_setup"
-            return setup_fake_driver_monitoring()  # This completes the setup
-        else:
-            # More specific matching for the fake driver setup steps
-            if any(word in title for word in ['install', 'library', 'fake']):
-                self.fake_driver_setup_state = "library_installed"
-                return install_fake_driver_library()
-            elif any(word in title for word in ['create', 'config', 'directory']):
-                self.fake_driver_setup_state = "config_created"
-                return create_fake_driver_config()
-            elif any(word in title for word in ['store', 'save', 'registry']):
-                self.fake_driver_setup_state = "config_stored"
-                return store_fake_driver_config()
-            else:
-                # Default response when we can't match
-                return f"🎯 Executing option {option_num}: **{option['title']}**\n\n{option['description']}\n\nLet me know if you'd like me to help with this specific task!"
+            # Default response when we can't match
+            return f"🎯 Executing option {option_num}: **{option['title']}**\n\n{option['description']}\n\nLet me know if you'd like me to help with this specific task!"
     
     def _execute_next_step(self) -> str:
         """Execute the next logical step based on current fake driver setup state."""
@@ -1153,19 +1138,7 @@ Please specify which agent to uninstall. Examples:
             self.fake_driver_setup_state = "platform_driver_ready"
             return vctl_install_platform_driver()
         elif self.fake_driver_setup_state == "platform_driver_ready":
-            self.fake_driver_setup_state = "library_installed"
-            return install_fake_driver_library()
-        elif self.fake_driver_setup_state == "library_installed":
-            self.fake_driver_setup_state = "config_created"
-            return create_fake_driver_config()
-        elif self.fake_driver_setup_state == "config_created":
-            self.fake_driver_setup_state = "config_stored"
-            return store_fake_driver_config()
-        elif self.fake_driver_setup_state == "config_stored":
-            self.fake_driver_setup_state = "monitoring_setup"
-            return setup_fake_driver_monitoring()
-        elif self.fake_driver_setup_state == "monitoring_setup":
-            return "🎉 **Fake driver setup is complete!** Your fake sensors are running and being monitored!\n\nWhat would you like to do next?\n1. **Check VOLTTRON status** - See how everything is running\n2. **View agent list** - See all your active agents\n3. **Check logs** - See recent activity"
+            return "🎉 **Platform driver installation is complete!**\n\nWhat would you like to do next?\n1. **Check VOLTTRON status** - See how everything is running\n2. **View agent list** - See all your active agents\n3. **Check logs** - See recent activity"
         else:
             # Default to checking status if we're not sure where we are
             return check_volttron_status()
@@ -1283,31 +1256,6 @@ Please specify which agent to uninstall. Examples:
         def install_platform_driver_tool() -> str:
             """Install the VOLTTRON platform driver for device communication."""
             return vctl_install_platform_driver()
-        
-        @self.agent.tool_plain
-        def install_fake_driver_library_tool() -> str:
-            """Install the fake driver library for testing and development."""
-            return install_fake_driver_library()
-        
-        @self.agent.tool_plain
-        def create_fake_driver_config_tool() -> str:
-            """Create configuration for fake driver devices."""
-            return create_fake_driver_config()
-        
-        @self.agent.tool_plain
-        def store_fake_driver_config_tool() -> str:
-            """Store the fake driver configuration in VOLTTRON."""
-            return store_fake_driver_config()
-        
-        @self.agent.tool_plain
-        def setup_fake_driver_monitoring_tool() -> str:
-            """Set up monitoring for fake driver data."""
-            return setup_fake_driver_monitoring()
-        
-        @self.agent.tool_plain
-        def subscribe_to_fake_data_tool() -> str:
-            """Subscribe to fake sensor data for monitoring."""
-            return subscribe_to_fake_data()
         
         @self.agent.tool_plain
         def show_recent_logs_tool(lines: int = 20) -> str:
@@ -1704,7 +1652,6 @@ Please specify which agent to uninstall. Examples:
                 r"stop.*volttron": "stop_volttron",
                 r"stop.*volltron": "stop_volttron",   # Handle common misspelling
                 r"list.*agents": "vctl_list_agents",
-                r"install.*fake.*driver": "install_fake_driver_library",
                 r"install.*(the|a)?.*platform.*driver": "vctl_install_platform_driver",
                 r"install.*(the|a)?.*listener.*agent": "vctl_install_listener_agent",
                 r"install.*agent": "vctl_install_listener_agent",
@@ -1889,7 +1836,11 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             return self.call_function_tool("stop_volttron", {})
         
         # Install commands
-        elif message_lower in ['install listener', 'install listener agent']:
+        elif any(phrase in message_lower for phrase in [
+            'install listener', 'install volttron-listener', 'install volttron listener',
+            'vctl install listener', 'vctl install volttron-listener',
+            'setup listener', 'set up listener', 'add listener', 'get listener'
+        ]):
             return self.call_function_tool("vctl_install_listener_agent", {})
             
         # Agent removal commands with tag and force option - enhanced pattern matching
@@ -1957,23 +1908,41 @@ Examples:
 
 You can use "vctl status" to see all agents and their tags."""
         
-        # Fake driver commands
+        # Fake driver commands - COMPLETE SETUP
         elif any(phrase in message_lower for phrase in [
-            'install fake driver', 'setup fake driver', 'install volttron-lib-fake-driver',
-            'configure fake driver', 'fake driver setup'
+            'install fake driver', 'setup fake driver', 'set up fake driver',
+            'configure fake driver', 'fake driver setup',
+            'get fake driver', 'add fake driver', 'enable fake driver',
+            'setup fake', 'set up fake', 'install fake'
         ]):
-            return self.call_function_tool("install_fake_driver", {})
+            return self.call_function_tool("setup_fake_driver_complete", {})
+        # Just install the library (not full setup)
         elif any(phrase in message_lower for phrase in [
-            'fake driver status', 'check fake driver', 'fake driver check',
-            'is fake driver installed', 'fake driver installed'
+            'install volttron-lib-fake-driver', 'install fake driver library',
+            'install fake library', 'install the fake driver library'
         ]):
-            return self.call_function_tool("check_fake_driver_status", {})
+            return self.call_function_tool("install_fake_driver_library", {})
         elif any(phrase in message_lower for phrase in [
             'show fake driver logs', 'fake driver logs', 'fake driver data',
-            'show fake data', 'fake sensor data', 'see fake driver', 'fake driver output'
+            'show fake data', 'fake sensor data', 'view fake driver', 
+            'see fake driver', 'fake driver output'
         ]):
             return self.call_function_tool("show_fake_driver_logs", {})
-        
+        elif any(phrase in message_lower for phrase in [
+            'watch fake driver', 'monitor fake driver', 'tail fake driver',
+            'watch fake logs', 'monitor fake logs', 'tail fake logs',
+            'watch fake data', 'monitor fake data'
+        ]):
+            return self.call_function_tool("watch_fake_driver_logs", {})
+        # General logs commands
+        elif any(phrase in message_lower for phrase in [
+            'show logs', 'view logs', 'see logs', 'check logs', 
+            'show recent logs', 'view recent logs', 'see recent logs',
+            'display logs', 'read logs', 'get logs', 'show the logs',
+            'view the logs', 'see the logs', 'i want to see the logs',
+            'want to see logs', 'check the logs', 'look at logs'
+        ]):
+            return self.call_function_tool("show_recent_logs", {})
         # List commands
         elif message_lower in ['list available agents', 'available agents', 'what agents can i install']:
             return self.call_function_tool("list_available_agents", {})
