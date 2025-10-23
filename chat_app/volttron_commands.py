@@ -4144,60 +4144,86 @@ Once VOLTTRON is running with logging, I can show you live activity! 🚀
                     other_interesting_lines.append(line)
             
             # Combine: Show device data first, then other interesting lines
-            interesting_lines = device_lines[-10:] + other_interesting_lines[-5:]
+            interesting_lines = device_lines[-30:] + other_interesting_lines[-5:]  # Get more lines
             
             if interesting_lines:
                 # Parse device lines to make them prettier
-                device_summaries = []
-                seen_devices = set()
+                device_data = {}  # device_name -> [timestamps]
                 
-                for line in device_lines[-10:]:
+                for line in device_lines[-50:]:  # Look at more lines
                     # Extract device name and timestamp
                     if 'devices/campus/building/fake/' in line:
                         try:
-                            # Extract timestamp (first part of line)
-                            timestamp = line.split('(')[0].strip()
+                            # Extract timestamp (just time portion)
+                            timestamp_full = line.split('(')[0].strip()
+                            time_only = timestamp_full.split()[1].split(',')[0]  # Get HH:MM:SS
+                            
                             # Extract device name after 'devices/campus/building/fake/'
                             device_part = line.split('devices/campus/building/fake/')[1]
                             device_name = device_part.split()[0].strip()
                             
-                            if device_name not in seen_devices and device_name != 'all':
-                                seen_devices.add(device_name)
-                                device_summaries.append(f"  📡 {timestamp} → {device_name}")
+                            if device_name != 'all':  # Skip 'all' device
+                                if device_name not in device_data:
+                                    device_data[device_name] = []
+                                if len(device_data[device_name]) < 3:  # Keep last 3 timestamps per device
+                                    device_data[device_name].append(time_only)
                         except:
                             pass
                 
-                # Build pretty output
-                if device_summaries:
-                    pretty_output = '\n'.join(device_summaries[-8:])  # Last 8 unique devices
+                # Build grid format
+                if device_data:
+                    # Create grid rows - 3 devices per row
+                    devices_list = sorted(device_data.keys())
+                    grid_rows = []
+                    
+                    for i in range(0, len(devices_list), 3):
+                        row_devices = devices_list[i:i+3]
+                        row_parts = []
+                        for dev in row_devices:
+                            latest_time = device_data[dev][-1] if device_data[dev] else "N/A"
+                            row_parts.append(f"📡 {dev[:20]:<20} {latest_time}")
+                        grid_rows.append("  " + " | ".join(row_parts))
+                    
+                    grid_output = '\n'.join(grid_rows)
+                    
+                    # Also show recent activity timeline
+                    timeline = []
+                    for dev in devices_list[:12]:  # Show up to 12 devices
+                        times = device_data[dev]
+                        if times:
+                            timeline.append(f"  📊 {dev[:18]:<18} → {' → '.join(times[-3:])}")
+                    
+                    timeline_output = '\n'.join(timeline)
                 else:
                     # Fallback to showing raw lines if parsing fails
-                    pretty_output = '\n'.join(interesting_lines[-10:])
+                    grid_output = '\n'.join(interesting_lines[-10:])
+                    timeline_output = "No device data parsed"
                 
                 return f"""
 📊 **Fake Driver Status: ACTIVE** ✅
 
-Your fake driver is publishing simulated device data! Here are the recent sensor updates:
-
+**🎯 Live Device Grid** ({len(device_data)} devices publishing)
 ```
-{pretty_output}
+{grid_output}
 ```
 
-**🎯 Devices Currently Publishing:**
-{', '.join(sorted(seen_devices)[:8]) if seen_devices else 'Multiple fake devices'}
+**📈 Recent Activity Timeline**
+```
+{timeline_output}
+```
 
-**📈 Activity Summary:**
-• **Platform driver**: ✅ Running and publishing
-• **Fake devices**: ✅ {len(seen_devices)} unique devices active
-• **Log file**: `{volttron_log}`
-• **Status**: 🟢 Live data streaming
+**📊 System Status:**
+```
+Platform Driver:  ✅ Running        Devices Active:  {len(device_data)}
+Log File:         {volttron_log.split('/')[-1]:<20}Status:          🟢 Streaming
+```
 
-**💡 What's next?**
-• **Install listener**: "install listener agent" - to see device data
-• **Check agents**: "show agents" - see all running agents  
-• **Live monitor**: `tail -f {volttron_log}` - watch in real-time
+**💡 Next Actions:**
+• **Install listener** → "install listener agent" (see device values)
+• **Check agents** → "show agents" (view all agents)
+• **Live monitor** → `tail -f {volttron_log}`
 
-Your fake driver setup is working perfectly! 🎉
+🎉 **Your fake driver is working perfectly!** All {len(device_data)} devices are actively publishing simulated sensor data.
 """
             else:
                 return f"""

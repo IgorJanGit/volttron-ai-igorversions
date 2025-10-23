@@ -1911,9 +1911,10 @@ You can use "vctl status" to see all agents and their tags."""
         # Fake driver commands - COMPLETE SETUP
         elif any(phrase in message_lower for phrase in [
             'install fake driver', 'setup fake driver', 'set up fake driver',
-            'configure fake driver', 'fake driver setup',
+            'set up the fake driver', 'setup the fake driver', 'install the fake driver',
+            'configure fake driver', 'configure the fake driver', 'fake driver setup',
             'get fake driver', 'add fake driver', 'enable fake driver',
-            'setup fake', 'set up fake', 'install fake'
+            'setup fake', 'set up fake', 'install fake', 'set up the fake'
         ]):
             return self.call_function_tool("setup_fake_driver_complete", {})
         # Just install the library (not full setup)
