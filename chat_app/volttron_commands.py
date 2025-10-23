@@ -1173,6 +1173,56 @@ def is_volttron_running():
     else:
         return "No"
 
+def simple_volttron_status_check():
+    """Simple function to check if VOLTTRON is running with minimal output."""
+    try:
+        # Direct process check - most reliable and lightweight method
+        result = subprocess.run(
+            "ps aux | grep bin/volttron | grep -v grep",
+            shell=True,
+            capture_output=True, 
+            text=True, 
+            timeout=3
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            return "✅ VOLTTRON is running!"
+        else:
+            return "❌ Hey, VOLTTRON is not running! You need to start it first."
+    except Exception:
+        return "❌ Hey, VOLTTRON is not running! You need to start it first."
+        
+def check_volttron_simple_message():
+    """
+    Simple function to check if VOLTTRON is running and return a user-friendly message.
+    This is designed to be integrated into REST APIs or other interfaces.
+    
+    Returns:
+        dict: Contains 'running' (boolean) and 'message' (string) fields
+    """
+    try:
+        # Quick process check to see if VOLTTRON is running
+        result = subprocess.run(
+            "ps aux | grep bin/volttron | grep -v grep",
+            shell=True,
+            capture_output=True, 
+            text=True,
+            timeout=3
+        )
+        
+        is_running = result.returncode == 0 and result.stdout.strip()
+        
+        if is_running:
+            message = "✅ VOLTTRON is running and active!"
+            return {"running": True, "message": message}
+        else:
+            message = "❌ Hey, VOLTTRON is not running! You need to start it first."
+            return {"running": False, "message": message}
+            
+    except Exception as e:
+        message = f"❓ Could not determine if VOLTTRON is running: {str(e)}"
+        return {"running": False, "message": message}
+
 def vctl_list_agents():
     """List all installed agents with their details."""
     try:

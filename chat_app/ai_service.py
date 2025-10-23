@@ -14,7 +14,7 @@ except ImportError:
         print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
         Agent = None
 from .volttron_commands import (
-    start_volttron, stop_volttron, check_volttron_status, read_volttron_log,
+    start_volttron, stop_volttron, check_volttron_status, simple_volttron_status_check, read_volttron_log,
     vctl_status, vctl_status_detailed, vctl_list_agents, vctl_start_agent, vctl_stop_agent, vctl_health,
     show_formatting_test, get_detailed_installation_help, get_volttron_next_steps,
     vctl_install_platform_driver, install_fake_driver_library, create_fake_driver_config,
@@ -360,6 +360,18 @@ class AIService:
                     "description": "Check if VOLTTRON platform is running",
                     "parameters": {
                         "type": "object", 
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "simple_volttron_status_check": {
+                "function": simple_volttron_status_check,
+                "schema": {
+                    "name": "simple_volttron_status_check",
+                    "description": "Simple check if VOLTTRON is running with minimal output",
+                    "parameters": {
+                        "type": "object",
                         "properties": {},
                         "required": []
                     }
@@ -1186,6 +1198,11 @@ Please specify which agent to uninstall. Examples:
         def check_volttron_status_tool() -> str:
             """Check VOLTTRON platform status and show recent logs."""
             return check_volttron_status()
+            
+        @self.agent.tool_plain
+        def simple_volttron_status_check_tool() -> str:
+            """Simple check if VOLTTRON is running with minimal output."""
+            return simple_volttron_status_check()
         
         @self.agent.tool_plain
         def get_vctl_status_tool() -> str:
@@ -1357,6 +1374,11 @@ Please specify which agent to uninstall. Examples:
         def check_volttron_status_tool() -> str:
             """Check VOLTTRON platform status and show recent logs."""
             return check_volttron_status()
+            
+        @agent.tool_plain
+        def simple_volttron_status_check_tool() -> str:
+            """Simple check if VOLTTRON is running with minimal output."""
+            return simple_volttron_status_check()
         
         @agent.tool_plain
         def list_agents_tool() -> str:
@@ -1475,13 +1497,16 @@ Please specify which agent to uninstall. Examples:
                     self.awaiting_reversal_confirmation = False
                     return "No problem! I'll leave everything as is. What would you like to do next?"
             
-            # Special override for "what agents are running" query to ensure it always works
+            # Special override for "what agents are running/installed" query to ensure it always works
             message_lower = message.lower().strip()
             if (('what agents are running' in message_lower) or 
                 ('which agents are running' in message_lower) or
+                ('what agents are installed' in message_lower) or
+                ('which agents are installed' in message_lower) or
                 (('show' in message_lower or 'list' in message_lower) and 
-                 'running' in message_lower and 'agents' in message_lower)):
-                print("DIRECT OVERRIDE: Executing vctl_status for 'what agents are running' query")
+                 ('running' in message_lower or 'installed' in message_lower) and 
+                 'agents' in message_lower)):
+                print(f"DIRECT OVERRIDE: Executing vctl_status for '{message}' query")
                 return self.call_function_tool("vctl_status", {})
             
             # Try direct command handling first
@@ -1800,20 +1825,29 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         # Status commands
         if message_lower in ['status', 'vctl status', 'agent status', 'check status']:
             return self.call_function_tool("vctl_status", {})
+        elif message_lower in ['is volttron running', 'check if volttron is running', 'volttron running']:
+            return self.call_function_tool("simple_volttron_status_check", {})
         elif message_lower in ['volttron status', 'platform status', 'check volttron']:
             return self.call_function_tool("check_volttron_status", {})
-        # More comprehensive pattern matching for "what agents are running"
+        # More comprehensive pattern matching for "what agents are running/installed"
         elif any(all(word in message_lower for word in combo) for combo in [
             ['what', 'agents', 'running'], 
             ['which', 'agents', 'running'],
+            ['what', 'agents', 'installed'],
+            ['which', 'agents', 'installed'],
             ['show', 'running', 'agents'], 
             ['list', 'running', 'agents'], 
+            ['show', 'installed', 'agents'],
+            ['list', 'installed', 'agents'],
             ['show', 'agents', 'running'],
+            ['show', 'agents', 'installed'],
             ['tell', 'running', 'agents'],
+            ['tell', 'installed', 'agents'],
             ['report', 'agents', 'running'],
+            ['report', 'agents', 'installed'],
             ['agents', 'status']
         ]):
-            print("Detected 'what agents are running' pattern - executing vctl_status directly")
+            print(f"Detected agent status pattern in '{message}' - executing vctl_status directly")
             # Directly show agent status when explicitly asked about running agents
             return self.call_function_tool("vctl_status", {})
         
@@ -1943,8 +1977,9 @@ You can use "vctl status" to see all agents and their tags."""
         # List commands
         elif message_lower in ['list available agents', 'available agents', 'what agents can i install']:
             return self.call_function_tool("list_available_agents", {})
-        elif message_lower in ['list agents', 'show agents', 'what agents', 'installed agents']:
-            return self.call_function_tool("list_agents_tool", {})
+        elif message_lower in ['list agents', 'show agents', 'what agents', 'installed agents', 'what agents are installed']:
+            # Use vctl_status directly for better reliability
+            return self.call_function_tool("vctl_status", {})
         
         # Uninstall/verification commands with pattern matching
         elif ('verify uninstall' in message_lower or 'check uninstall' in message_lower or 
