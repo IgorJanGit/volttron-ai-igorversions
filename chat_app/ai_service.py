@@ -22,7 +22,7 @@ from .volttron_commands import (
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
     show_fake_driver_logs, watch_fake_driver_logs, setup_fake_driver_complete,
-    vctl_start_all_agents, vctl_force_remove_agent
+    vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -253,6 +253,50 @@ if agent:
     def start_all_agents_tool() -> str:
         """Start all available VOLTTRON agents that are not currently running."""
         return vctl_start_all_agents()
+
+    @agent.tool_plain
+    def run_vctl_help_tool(subcommand: str = None) -> str:
+        """Run vctl --help to learn about available commands.
+        
+        Use this tool when you don't know what vctl command to use or need to learn
+        about available options. Can get general help or help for a specific subcommand.
+        
+        Args:
+            subcommand: Optional subcommand to get help for (e.g., 'install', 'status', 'config')
+        """
+        return run_vctl_help(subcommand)
+
+    @agent.tool_plain
+    def intelligent_vctl_discovery_tool(user_intent: str, context: str = "") -> str:
+        """Intelligently discover and execute vctl commands by learning from --help.
+        
+        This tool automatically:
+        1. Runs vctl --help to see available commands
+        2. Analyzes the user's intent
+        3. Picks the most likely command
+        4. Executes it and returns the result
+        
+        Use this when the user asks for something that might need a vctl command but
+        you're not sure which one.
+        
+        Args:
+            user_intent: What the user is trying to do (e.g., "check agent health")
+            context: Additional context about the request
+        """
+        result = intelligent_vctl_command_discovery(user_intent, context)
+        
+        # Format the response nicely
+        response = f"**Command Discovery Results:**\n\n"
+        response += f"**Intent:** {user_intent}\n"
+        response += f"**Help Consulted:** {', '.join(result['help_consulted'])}\n"
+        
+        if result['command_used']:
+            response += f"**Command Used:** `{result['command_used']}`\n"
+        
+        response += f"**Status:** {'✅ Success' if result['success'] else '❌ Failed'}\n\n"
+        response += f"**Output:**\n```\n{result['output']}\n```"
+        
+        return response
 
 class AIService:
     """Service for handling AI model interactions with function tools support."""
@@ -635,6 +679,44 @@ class AIService:
                         "type": "object",
                         "properties": {},
                         "required": []
+                    }
+                }
+            },
+            "run_vctl_help": {
+                "function": run_vctl_help,
+                "schema": {
+                    "name": "run_vctl_help",
+                    "description": "Run vctl --help to learn about available commands. Use this when you don't know what vctl command to use.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "subcommand": {
+                                "type": "string",
+                                "description": "Optional subcommand to get help for (e.g., 'install', 'status', 'config')"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
+            "intelligent_vctl_command_discovery": {
+                "function": lambda user_intent, context="": intelligent_vctl_command_discovery(user_intent, context),
+                "schema": {
+                    "name": "intelligent_vctl_command_discovery",
+                    "description": "Intelligently discover and execute vctl commands by analyzing user intent and consulting vctl --help. Use this when user asks for something that might need a vctl command but you're not sure which one.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "user_intent": {
+                                "type": "string",
+                                "description": "What the user is trying to do (e.g., 'check agent health', 'list peers')"
+                            },
+                            "context": {
+                                "type": "string",
+                                "description": "Additional context about the request"
+                            }
+                        },
+                        "required": ["user_intent"]
                     }
                 }
             }
@@ -1348,15 +1430,23 @@ Please specify which agent to uninstall. Examples:
             "- NO numbered lists unless requested\n" 
             "- NO \"I'll do X for you\" - just do it\n"
             "- NO progress reports - just show final status\n\n"
+            "INTELLIGENT COMMAND DISCOVERY:\n"
+            "- When you don't know a vctl command, use 'run_vctl_help' tool\n"
+            "- Or use 'intelligent_vctl_command_discovery' to automatically find and run the right command\n"
+            "- Learn from help output and pick the best command\n"
+            "- Keep context from previous help queries\n\n"
             "TOOLS AVAILABLE:\n"
             "- start_volttron_tool: Start VOLTTRON\n"
             "- stop_volttron_tool: Stop VOLTTRON\n"
             "- check_volttron_status_tool: Check status\n"
             "- vctl_status: Get agent status\n"
+            "- run_vctl_help: Get vctl help (general or specific command)\n"
+            "- intelligent_vctl_command_discovery: Auto-discover and run vctl commands\n"
             "- install_listener_agent_tool: Install listener\n"
             "- list_agents_tool: List agents\n"
             "- And other VOLTTRON management tools\n\n"
-            "EXECUTE COMMANDS DIRECTLY - don't explain what you'll do, just do it and report the result briefly."
+            "EXECUTE COMMANDS DIRECTLY - don't explain what you'll do, just do it and report the result briefly.\n"
+            "When uncertain about a command, use intelligent_vctl_command_discovery to figure it out."
         )
 
     def _setup_agent(self):
@@ -1651,10 +1741,10 @@ Please specify which agent to uninstall. Examples:
                 r"start.*volltron": "start_volttron",  # Handle common misspelling
                 r"stop.*volttron": "stop_volttron",
                 r"stop.*volltron": "stop_volttron",   # Handle common misspelling
-                r"list.*agents": "vctl_list_agents",
+                r"list\s+(all\s+)?agents(?!\s+\w)": "vctl_list_agents",  # Match "list agents" but not "list agent tags"
                 r"install.*(the|a)?.*platform.*driver": "vctl_install_platform_driver",
                 r"install.*(the|a)?.*listener.*agent": "vctl_install_listener_agent",
-                r"install.*agent": "vctl_install_listener_agent",
+                # r"install.*agent": "vctl_install_listener_agent",  # DISABLED - too broad
                 r"show.*logs": "show_recent_logs",
                 r"health.*check": "vctl_health"
             }
@@ -1819,20 +1909,24 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
                     else:
                         return f"🔍 **Looking for agent '{agent_id}'...**\n\n{status_result}"
         
-        # Start/Stop commands with better spelling handling
-        if any(phrase in message_lower for phrase in [
-            'start volttron', 'start volltron', 'start volltrron', 'start voltrron',
-            'start voltron', 'start platform', 'launch volttron', 'launch volltron',
-            'start the volttron', 'start the volltron', 'start the volltrron', 'start the voltrron',
-            'start the voltron', 'start the platform', 'launch the volttron', 'launch the volltron'
-        ]):
+        # Start/Stop commands with better spelling handling and flexible matching
+        # Match variations like "start", "start up", "startup", with optional "the" and common typos
+        start_volttron_patterns = [
+            r'\b(?:start|startup|launch|boot|fire\s*up|bring\s*up|turn\s*on)(?:\s+up)?(?:\s+the)?\s+(?:volttron|volltron|volltrron|voltrron|voltron|platform)\b',
+            r'\bvolttron\s+(?:start|startup|launch)\b',
+        ]
+        
+        stop_volttron_patterns = [
+            r'\b(?:stop|shutdown|shut\s*down|kill|halt|turn\s*off|bring\s*down)(?:\s+the)?\s+(?:volttron|volltron|volltrron|voltrron|voltron|platform)\b',
+            r'\bvolttron\s+(?:stop|shutdown)\b',
+        ]
+        
+        # Check for start patterns
+        if any(re.search(pattern, message_lower) for pattern in start_volttron_patterns):
             return self.call_function_tool("start_volttron", {})
-        elif any(phrase in message_lower for phrase in [
-            'stop volttron', 'stop volltron', 'stop volltrron', 'stop voltrron',
-            'stop voltron', 'stop platform', 'shutdown volttron', 'shutdown volltron',
-            'stop the volttron', 'stop the volltron', 'stop the volltrron', 'stop the voltrron',
-            'stop the voltron', 'stop the platform', 'shutdown the volttron', 'shutdown the volltron'
-        ]):
+        
+        # Check for stop patterns  
+        if any(re.search(pattern, message_lower) for pattern in stop_volttron_patterns):
             return self.call_function_tool("stop_volttron", {})
         
         # Install commands
@@ -2127,6 +2221,7 @@ You can use "vctl status" to see all agents and their tags."""
             return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": "b"})
         
         # Pattern matching for start/stop agent commands (basic patterns)
+        # BUT: Skip if this looks like a VOLTTRON platform command
         start_patterns = [
             r'start\s+(\w+)',
             r'start\s+agent\s+(\w+)'
@@ -2136,8 +2231,14 @@ You can use "vctl status" to see all agents and their tags."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                # Exclude VOLTTRON platform variations and common misspellings
-                volttron_variations = ['agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform', 'the', 'this', 'that', 'one']
+                # Exclude VOLTTRON platform variations, common misspellings, and filler words
+                volttron_variations = [
+                    'agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform', 
+                    'the', 'this', 'that', 'one', 'it', 'up', 'of', 'a', 'an', 'my', 'our'
+                ]
+                # Also check if the full message contains "volttron" - if so, skip agent logic
+                if 'volttron' in message_lower or 'volltron' in message_lower or 'voltron' in message_lower:
+                    continue
                 if agent_id and agent_id not in volttron_variations:
                     return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": agent_id})
         
@@ -2150,7 +2251,15 @@ You can use "vctl status" to see all agents and their tags."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                if agent_id and agent_id not in ['agent', 'volttron', 'platform', 'the']:
+                # Exclude VOLTTRON platform variations and filler words
+                volttron_variations = [
+                    'agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform',
+                    'the', 'this', 'that', 'one', 'it', 'of', 'a', 'an', 'my', 'our'
+                ]
+                # Also check if the full message contains "volttron" - if so, skip agent logic
+                if 'volttron' in message_lower or 'volltron' in message_lower or 'voltron' in message_lower:
+                    continue
+                if agent_id and agent_id not in volttron_variations:
                     return self.call_function_tool("vctl_stop_agent", {"agent_uuid_or_tag": agent_id})
         
         return None  # No direct command matched

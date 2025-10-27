@@ -324,6 +324,204 @@ def get_volttron_home():
     print(f"DEBUG: Using default VOLTTRON_HOME: {default_volttron_home}")
     return default_volttron_home
 
+
+def run_vctl_help(subcommand=None):
+    """Run vctl --help or vctl <subcommand> --help to learn about available commands.
+    
+    Args:
+        subcommand: Optional subcommand to get help for (e.g., 'install', 'status')
+    
+    Returns:
+        str: Help output from vctl
+    """
+    vctl_cmd = find_vctl_command()
+    volttron_home = get_volttron_home()
+    
+    if not vctl_cmd:
+        return "❌ Could not find vctl command"
+    
+    try:
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        if subcommand:
+            # Get help for specific subcommand
+            result = subprocess.run(
+                [vctl_cmd, subcommand, "--help"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+                cwd=volttron_home
+            )
+        else:
+            # Get general help
+            result = subprocess.run(
+                [vctl_cmd, "--help"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+                cwd=volttron_home
+            )
+        
+        if result.returncode == 0:
+            return result.stdout
+        else:
+            return result.stderr or "No help available"
+            
+    except subprocess.TimeoutExpired:
+        return "⏱️ Timeout getting help"
+    except Exception as e:
+        return f"💥 Error getting help: {str(e)}"
+
+
+def intelligent_vctl_command_discovery(user_intent, context=""):
+    """Intelligently discover and execute vctl commands by learning from --help.
+    
+    This function:
+    1. Runs vctl --help to see available commands
+    2. Analyzes the user's intent
+    3. Picks the most likely command
+    4. Runs that command's --help if needed
+    5. Executes the command with appropriate arguments
+    
+    Args:
+        user_intent: What the user is trying to do (e.g., "check agent status")
+        context: Additional context about the request
+    
+    Returns:
+        dict: {
+            'success': bool,
+            'command_used': str,
+            'output': str,
+            'help_consulted': list of help commands checked
+        }
+    """
+    vctl_cmd = find_vctl_command()
+    volttron_home = get_volttron_home()
+    
+    if not vctl_cmd:
+        return {
+            'success': False,
+            'command_used': None,
+            'output': "❌ Could not find vctl command",
+            'help_consulted': []
+        }
+    
+    result = {
+        'success': False,
+        'command_used': None,
+        'output': '',
+        'help_consulted': []
+    }
+    
+    try:
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # Step 1: Get general vctl help to see available commands
+        help_output = run_vctl_help()
+        result['help_consulted'].append('vctl --help')
+        
+        # Step 2: Parse available commands from help
+        available_commands = []
+        lines = help_output.split('\n')
+        in_commands_section = False
+        
+        for line in lines:
+            # Look for commands section
+            if 'positional arguments:' in line.lower() or 'commands:' in line.lower():
+                in_commands_section = True
+                continue
+            
+            if in_commands_section:
+                # Stop at optional arguments or empty section
+                if line.strip().startswith('-') or (line.strip() == '' and available_commands):
+                    break
+                
+                # Extract command name (first word after whitespace)
+                parts = line.strip().split()
+                if parts and not parts[0].startswith('{'):
+                    cmd = parts[0]
+                    if cmd and not cmd.startswith('-'):
+                        available_commands.append(cmd)
+        
+        # Step 3: Map user intent to most likely command
+        intent_lower = user_intent.lower()
+        
+        # Intent mapping rules
+        intent_map = {
+            'status': ['status', 'list', 'ps'],
+            'install': ['install', 'add'],
+            'uninstall': ['uninstall', 'remove', 'delete'],
+            'start': ['start', 'run', 'launch'],
+            'stop': ['stop', 'shutdown', 'kill'],
+            'restart': ['restart', 'reload'],
+            'list': ['list', 'show', 'display'],
+            'config': ['config', 'configure', 'set'],
+            'tag': ['tag', 'name', 'identity'],
+            'health': ['health', 'check', 'verify'],
+            'log': ['log', 'logs', 'tail'],
+            'clear': ['clear', 'clean', 'purge'],
+            'peerlist': ['peerlist', 'peers', 'connections']
+        }
+        
+        # Find matching commands
+        matched_commands = []
+        for key, keywords in intent_map.items():
+            if any(kw in intent_lower for kw in keywords):
+                if key in available_commands:
+                    matched_commands.append(key)
+        
+        # If no match, try direct matching with available commands
+        if not matched_commands:
+            for cmd in available_commands:
+                if cmd in intent_lower:
+                    matched_commands.append(cmd)
+        
+        # Step 4: If we found potential commands, try the most likely one
+        if matched_commands:
+            primary_command = matched_commands[0]
+            
+            # Get detailed help for this command
+            cmd_help = run_vctl_help(primary_command)
+            result['help_consulted'].append(f'vctl {primary_command} --help')
+            
+            # Step 5: Execute the command
+            exec_result = subprocess.run(
+                [vctl_cmd, primary_command],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=env,
+                cwd=volttron_home
+            )
+            
+            result['success'] = (exec_result.returncode == 0)
+            result['command_used'] = f'vctl {primary_command}'
+            result['output'] = exec_result.stdout if exec_result.returncode == 0 else exec_result.stderr
+            
+        else:
+            # No matching command found
+            result['output'] = f"""
+🤔 **Could not find matching vctl command for:** "{user_intent}"
+
+**Available vctl commands:**
+{', '.join(available_commands)}
+
+**💡 Tip:** Try being more specific or use one of the available commands directly.
+"""
+        
+        return result
+        
+    except subprocess.TimeoutExpired:
+        result['output'] = "⏱️ Timeout executing command"
+        return result
+    except Exception as e:
+        result['output'] = f"💥 Error: {str(e)}"
+        return result
+
 def check_volttron_environment():
     """Check and setup VOLTTRON environment variables."""
     
