@@ -24,6 +24,9 @@ conversation_history.json
 *.egg
 MANIFEST
 
+# Documentation (work in progress)
+PYDANTIC_AI_IMPLEMENTATION.md
+
 # Environment variables
 .env
 

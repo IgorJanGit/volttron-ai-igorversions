@@ -10,9 +10,6 @@ import subprocess
 import argparse
 from pathlib import Path
 
-# Add the project root to Python path since we're in tests/ subdirectory
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 
 def colored_print(text, color='white'):
     """Print colored text to terminal."""
@@ -72,10 +69,12 @@ def run_tests(verbose=False, coverage=False, html_report=False, test_file=None):
             cmd.append('--cov-report=html:htmlcov')
     
     if test_file:
-        # Since we're in the tests directory, just use the filename directly
+        # Handle both relative and absolute paths
+        if not test_file.startswith('tests/'):
+            test_file = f'tests/{test_file}'
         cmd.append(test_file)
     else:
-        cmd.append('.')  # Current directory (tests/)
+        cmd.append('tests/')
         
     # Add standard options
     cmd.extend(['--tb=short', '--strict-markers'])

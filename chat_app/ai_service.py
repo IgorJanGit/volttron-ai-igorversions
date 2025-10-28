@@ -22,7 +22,8 @@ from .volttron_commands import (
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
     show_fake_driver_logs, watch_fake_driver_logs, setup_fake_driver_complete,
-    vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery
+    vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
+    smart_install_package
 )
 
 # Initialize the Pydantic AI agent with proper function tools using decorators
@@ -207,6 +208,24 @@ if agent:
     def pip_list_tool() -> str:
         """List all installed Python packages."""
         return pip_list_packages()
+
+    @agent.tool_plain
+    def smart_install_tool(package_name: str, user_message: str = "") -> str:
+        """Intelligently install a package using pip or vctl based on package type.
+        
+        This is the flexible installation tool that handles all installation requests.
+        It automatically determines whether to use pip or vctl based on what's being installed.
+        
+        Rules:
+        - Fake driver library → MUST use pip (vctl won't work)
+        - Python libraries (volttron-*) → Use pip
+        - VOLTTRON agents → Use vctl install
+        
+        Args:
+            package_name: Name of package/agent to install
+            user_message: Original user message for context
+        """
+        return smart_install_package(package_name, user_message)
 
     @agent.tool_plain
     def install_fake_driver_library_tool() -> str:
@@ -584,6 +603,28 @@ class AIService:
                         "type": "object",
                         "properties": {},
                         "required": []
+                    }
+                }
+            },
+            "smart_install_package": {
+                "function": smart_install_package,
+                "schema": {
+                    "name": "smart_install_package",
+                    "description": "Intelligently install a package using pip or vctl. Automatically determines the right installation method. Use this for all 'install X' requests.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "package_name": {
+                                "type": "string",
+                                "description": "Name of the package or agent to install"
+                            },
+                            "user_message": {
+                                "type": "string",
+                                "description": "Original user message for context",
+                                "default": ""
+                            }
+                        },
+                        "required": ["package_name"]
                     }
                 }
             },
@@ -1430,6 +1471,13 @@ Please specify which agent to uninstall. Examples:
             "- NO numbered lists unless requested\n" 
             "- NO \"I'll do X for you\" - just do it\n"
             "- NO progress reports - just show final status\n\n"
+            "FLEXIBLE INSTALLATION:\n"
+            "- When user says 'install X' use smart_install_package tool\n"
+            "- It automatically determines pip vs vctl based on package type\n"
+            "- Fake driver library MUST use pip (vctl won't work)\n"
+            "- Python libraries (volttron-*) use pip\n"
+            "- VOLTTRON agents use vctl\n"
+            "- Let smart_install_package handle the logic - don't overthink it\n\n"
             "INTELLIGENT COMMAND DISCOVERY:\n"
             "- When you don't know a vctl command, use 'run_vctl_help' tool\n"
             "- Or use 'intelligent_vctl_command_discovery' to automatically find and run the right command\n"
@@ -1440,6 +1488,7 @@ Please specify which agent to uninstall. Examples:
             "- stop_volttron_tool: Stop VOLTTRON\n"
             "- check_volttron_status_tool: Check status\n"
             "- vctl_status: Get agent status\n"
+            "- smart_install_package: Flexible installation (use this for 'install X' requests)\n"
             "- run_vctl_help: Get vctl help (general or specific command)\n"
             "- intelligent_vctl_command_discovery: Auto-discover and run vctl commands\n"
             "- install_listener_agent_tool: Install listener\n"
@@ -2045,10 +2094,37 @@ You can use "vctl status" to see all agents and their tags."""
             # Use vctl_status directly for better reliability
             return self.call_function_tool("vctl_status", {})
         
+        # FLEXIBLE INSTALLATION - Handle "install X" with smart detection
+        # This catches general installation requests and intelligently routes them
+        install_general_patterns = [
+            r'install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # install X or install the X
+            r'can\s+you\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # can you install X
+            r'please\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # please install X
+            r'i\s+(?:want|need)\s+to\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # I want to install X
+            r'(?:add|get|setup|set\s+up)\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # add/get/setup X
+        ]
+        
+        # Check if this is a general install request (not caught by specific handlers above)
+        for pattern in install_general_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                package_name = match.group(1).strip()
+                # Skip if it's a specific command we already handle
+                skip_terms = ['fake driver', 'listener', 'logs', 'status', 'agent status']
+                if any(term in package_name for term in skip_terms):
+                    continue
+                # Remove common filler words
+                package_name = package_name.replace(' agent', '').replace(' package', '').strip()
+                if package_name and package_name not in ['the', 'a', 'an', 'it', 'this', 'that']:
+                    return self.call_function_tool("smart_install_package", {
+                        "package_name": package_name,
+                        "user_message": message
+                    })
+        
         # Uninstall/verification commands with pattern matching
-        elif ('verify uninstall' in message_lower or 'check uninstall' in message_lower or 
-              'confirm removal' in message_lower or 'verify removal' in message_lower or 
-              'check if' in message_lower or 'check removal' in message_lower):
+        if ('verify uninstall' in message_lower or 'check uninstall' in message_lower or 
+            'confirm removal' in message_lower or 'verify removal' in message_lower or 
+            'check if' in message_lower or 'check removal' in message_lower):
             # Extract agent identifier
             words = message_lower.split()
             agent_id = None

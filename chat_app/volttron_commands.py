@@ -2910,6 +2910,127 @@ def pip_list_packages():
     except Exception as e:
         return f"💥 Error checking installed packages: {str(e)}"
 
+def smart_install_package(package_name, user_message=""):
+    """Intelligently install a package using pip or vctl based on package type.
+    
+    Rules:
+    - Fake driver library (volttron-lib-fake-driver) → MUST use pip
+    - Python libraries (volttron-*) → Use pip
+    - VOLTTRON agents (listener, platform driver, historian, etc.) → Use vctl install
+    
+    Args:
+        package_name: Name of package/agent to install
+        user_message: Original user message for context
+        
+    Returns:
+        str: Installation result message
+    """
+    package_lower = package_name.lower().strip()
+    message_lower = user_message.lower()
+    
+    # Rule 1: Fake driver library MUST use pip (cannot use vctl)
+    if 'fake' in package_lower and 'driver' in package_lower:
+        if 'lib' not in package_lower and 'volttron-lib' not in package_lower:
+            package_name = 'volttron-lib-fake-driver'
+        return pip_install_package(package_name)
+    
+    # Rule 2: If package starts with "volttron-" it's a pip package (library)
+    if package_lower.startswith('volttron-'):
+        return pip_install_package(package_name)
+    
+    # Rule 3: Known VOLTTRON agents that use vctl install
+    # Comprehensive list from https://github.com/eclipse-volttron
+    vctl_agents = {
+        # Core agents
+        'listener': vctl_install_listener_agent,
+        'listeneragent': vctl_install_listener_agent,
+        'volttron-listener': vctl_install_listener_agent,
+        
+        # Platform driver
+        'platform-driver': vctl_install_platform_driver,
+        'platformdriver': vctl_install_platform_driver,
+        'platform.driver': vctl_install_platform_driver,
+        'volttron-platform-driver': vctl_install_platform_driver,
+        
+        # Historians
+        'historian': vctl_install_agent,
+        'sqlhistorian': vctl_install_agent,
+        'sql-historian': vctl_install_agent,
+        'postgresql-historian': vctl_install_agent,
+        'sqlite-historian': vctl_install_agent,
+        'volttron-postgresql-historian': vctl_install_agent,
+        'volttron-sqlite-historian': vctl_install_agent,
+        
+        # Actuator
+        'actuator': vctl_install_agent,
+        'volttron-actuator': vctl_install_agent,
+        
+        # Weather
+        'weather': vctl_install_agent,
+        'weatheragent': vctl_install_agent,
+        
+        # IEEE 2030.5
+        'ieee2030': vctl_install_agent,
+        'ieee-2030': vctl_install_agent,
+        
+        # Protocol proxies
+        'bacnet-proxy': vctl_install_agent,
+        'bacnetproxy': vctl_install_agent,
+        'modbus-tk': vctl_install_agent,
+        'modbus': vctl_install_agent,
+        'dnp3': vctl_install_agent,
+        'mqtt-proxy': vctl_install_agent,
+        'nats-proxy': vctl_install_agent,
+        
+        # ILC
+        'ilc': vctl_install_agent,
+        'volttron-ilc': vctl_install_agent,
+        
+        # Topic watcher
+        'topic-watcher': vctl_install_agent,
+        'topicwatcher': vctl_install_agent,
+        'volttron-topic-watcher': vctl_install_agent,
+        
+        # Threshold detection
+        'threshold-detection': vctl_install_agent,
+        'thresholddetection': vctl_install_agent,
+        'volttron-threshold-detection': vctl_install_agent,
+        
+        # Platform lookup
+        'platform-lookup': vctl_install_agent,
+        'platformlookup': vctl_install_agent,
+    }
+    
+    # Check if it's a known vctl agent
+    package_normalized = package_lower.replace('_', '-').replace('.', '-')
+    for agent_name, install_func in vctl_agents.items():
+        if agent_name in package_normalized or package_normalized in agent_name:
+            # Call the appropriate installation function
+            if install_func == vctl_install_agent:
+                return vctl_install_agent(package_name)
+            else:
+                return install_func()
+    
+    # Rule 4: If message says "agent", use vctl
+    if 'agent' in message_lower:
+        return vctl_install_agent(package_name)
+    
+    # Rule 5: Default to pip for Python packages
+    # Try pip first, if it fails suggest vctl
+    pip_result = pip_install_package(package_name)
+    
+    if '❌' in pip_result or 'Failed' in pip_result or 'not found' in pip_result.lower():
+        return f"""{pip_result}
+
+💡 **Alternative:** If this is a VOLTTRON agent (not a library), try:
+   `vctl install {package_name}`
+
+**Need help?** Tell me more about what you're trying to install:
+• Python library → I'll use `pip install`
+• VOLTTRON agent → I'll use `vctl install`"""
+    
+    return pip_result
+
 def install_fake_driver_library():
     """Install the volttron-lib-fake-driver package for testing and development.
     
