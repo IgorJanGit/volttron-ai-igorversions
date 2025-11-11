@@ -2522,38 +2522,33 @@ def vctl_install_agent(agent_name):
             capture_output=True, text=True, timeout=60, env=env, cwd=volttron_home
         )
         
-        if result.returncode == 0:
-            status_emoji = "🎉" if agent_info['category'] == 'Core' else "✅"
-            auto_start_msg = " and started" if "--start" in install_args else ""
-            
-            return f"""{status_emoji} **{agent_name.title()} Agent Installed Successfully!**
+        return f"""Agent installation operation completed.
 
-**📋 Agent Details:**
-• **Name**: {agent_name}
-• **Package**: {agent_info['package']}
-• **Category**: {agent_info['category']}
-• **Description**: {agent_info['description']}
-• **VIP Identity**: {agent_info['vip_identity']}
+Agent name: {agent_name}
+Package: {agent_info['package']}
+Category: {agent_info['category']}
+Description: {agent_info['description']}
+VIP Identity: {agent_info['vip_identity']}
+Command used: {' '.join(install_args)}
+Return code: {result.returncode}
+Success: {result.returncode == 0}
+Auto-started: {'--start' in install_args}
 
-The agent has been installed{auto_start_msg}! 🚀
+Installation output:
+{result.stdout}
 
-**🔍 Next Steps:**
-• Check status: **"vctl status"**
-• View logs: **"show recent logs"**
-• List all agents: **"list agents"**
+Errors (if any):
+{result.stderr if result.stderr else 'None'}
 """
-        else:
-            return f"""❌ **Failed to install {agent_name} agent**
-
-**Error:** {result.stderr or result.stdout}
-
-💡 **Troubleshooting:**
-• Make sure VOLTTRON is running: **"start volttron"**
-• Check agent status: **"vctl status"**
-• Try: **"what agents can I install?"**"""
             
     except Exception as e:
-        return f"❌ Error installing {agent_name} agent: {str(e)}"
+        return f"""Agent installation error.
+
+Agent name: {agent_name}
+Operation: vctl install agent
+Error type: {type(e).__name__}
+Error details: {str(e)}
+"""
 
 def list_available_agents():
     """List all available VOLTTRON agents that can be installed."""
@@ -2694,90 +2689,63 @@ Errors (if any):
 {result.stderr if result.stderr else 'None'}
 """
             
-    except subprocess.TimeoutExpired:
-        return f"⏱️ **Timeout installing {package_name}** (>120 seconds)"
+    except subprocess.TimeoutExpired as e:
+        return f"""Package installation timeout.
+
+Package: {package_name}
+Operation: pip install
+Timeout duration: 120 seconds
+Error type: TimeoutExpired
+Error details: {str(e)}
+
+The installation process exceeded the timeout limit. This may indicate:
+- Large package with many dependencies
+- Slow network connection
+- Package build process taking too long
+"""
     except Exception as e:
-        return f"💥 **Unexpected error**: {str(e)}"
-        
-        print(f"📦 Installing package: {package_name}")
-        install_result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        if install_result.returncode == 0:
-            if "Requirement already satisfied" in install_result.stdout:
-                return f"""✅ **{package_name} is already installed!**
+        return f"""Package installation error.
 
-The package is ready to use. If you want to upgrade to the latest version, ask me to:
-• "Upgrade {package_name}"
-• "pip install --upgrade {package_name}"
+Package: {package_name}
+Operation: pip install
+Error type: {type(e).__name__}
+Error details: {str(e)}
 
-What would you like to do next?"""
-            else:
-                return f"""🎉 **Successfully installed {package_name}!**
-
-The package is now ready to use.
-
-What would you like to do next?"""
-        else:
-            error_output = install_result.stderr or install_result.stdout
-            
-            if "No matching distribution found" in error_output:
-                return f"""❌ **Package '{package_name}' not found**
-
-The package name might be incorrect or not available from PyPI.
-
-💡 **Suggestions:**
-• Check the spelling of the package name
-• Try a different package name
-• Look for alternative packages with similar functionality
-
-Would you like me to help you find an alternative package?"""
-            elif "Permission denied" in error_output:
-                return f"""❌ **Permission denied when installing {package_name}**
-
-You may need admin privileges to install this package.
-
-💡 **Try:**
-• Adding `--user` flag: `pip install --user {package_name}`
-• Using a virtual environment
-• Running with sudo (if appropriate): `sudo pip install {package_name}`"""
-            else:
-                return f"""❌ **Failed to install {package_name}**
-
-**Error:** {error_output[:500]}...
-
-💡 **Try:**
-• Check your internet connection
-• Ensure the package name is correct
-• Try installing with `pip install --user {package_name}`"""
-                
-    except subprocess.TimeoutExpired:
-        return f"❌ Installation of {package_name} timed out. The package might be very large or your internet connection might be slow."
-    except Exception as e:
-        return f"❌ Error during installation: {str(e)}"
+An unexpected error occurred during package installation.
+"""
 
 def pip_uninstall_package(package_name, force=False):
-    """Uninstall a Python package using pip with casual conversational output.
+    """Uninstall a Python package using pip.
     
     Args:
         package_name (str): Name of the package to uninstall
         force (bool): If True, skip confirmation prompts
     
     Returns:
-        str: Casual, conversational status message
+        str: Structured status message with operation details
     """
     try:
         pip_cmd = find_pip_command()
         
         if not pip_cmd:
-            return "❌ Hmm, can't find pip anywhere. Are you in the right environment?"
+            is_active, venv_path, reason = get_active_virtualenv()
+            return f"""Cannot find pip command.
+
+Package: {package_name}
+Operation: pip uninstall
+Pip command: Not found
+Virtual environment active: {is_active}
+Virtual environment path: {venv_path or 'None'}
+Detection method: {reason}
+"""
         
         if not package_name or not package_name.strip():
-            return "❌ You need to tell me which package to uninstall! Like 'volttron-listener' or something."
+            return f"""Invalid package name.
+
+Package: {package_name}
+Operation: pip uninstall
+Error: Empty or invalid package name provided
+"""
         
         package_name = package_name.strip()
         
@@ -2790,12 +2758,20 @@ def pip_uninstall_package(package_name, force=False):
         ], capture_output=True, text=True, timeout=10, env=env)
         
         if check_result.returncode != 0:
-            return f"🤷 Package '{package_name}' doesn't seem to be installed anyway, so... mission accomplished? 😅"
+            return f"""Package not currently installed.
+
+Package: {package_name}
+Operation: pip uninstall
+Check return code: {check_result.returncode}
+Package installed: False
+Check output: {check_result.stdout}
+Check errors: {check_result.stderr}
+"""
         
         uninstall_cmd = [pip_cmd, "uninstall"]
         
         if force:
-            uninstall_cmd.append("-y")  # Auto-confirm
+            uninstall_cmd.append("-y")
         
         uninstall_cmd.append(package_name)
         
@@ -2807,24 +2783,39 @@ def pip_uninstall_package(package_name, force=False):
             env=env
         )
         
-        if result.returncode == 0:
-            return f"🎉 Boom! Successfully kicked '{package_name}' out of the system. It's gone! 👋"
-        else:
-            error_output = result.stderr or result.stdout or "No error details available"
-            
-            if "not installed" in error_output.lower():
-                return f"🤔 Weird... '{package_name}' wasn't actually installed. Maybe it was already removed?"
-            elif "permission" in error_output.lower() or "denied" in error_output.lower():
-                return f"🔒 Permission denied trying to uninstall '{package_name}'. Try running as admin or check your environment permissions."
-            elif "dependency" in error_output.lower():
-                return f"⚠️ Can't remove '{package_name}' because other packages depend on it. You might need to remove those first."
-            else:
-                return f"❌ Something went sideways uninstalling '{package_name}':\n{error_output}"
+        return f"""Package uninstall operation completed.
+
+Package: {package_name}
+Operation: pip uninstall
+Command used: {' '.join(uninstall_cmd)}
+Return code: {result.returncode}
+Success: {result.returncode == 0}
+Force mode: {force}
+
+Output:
+{result.stdout}
+
+Errors (if any):
+{result.stderr if result.stderr else 'None'}
+"""
                 
-    except subprocess.TimeoutExpired:
-        return f"⏱️ Timeout! Uninstalling '{package_name}' is taking way too long. Something might be stuck."
+    except subprocess.TimeoutExpired as e:
+        return f"""Package uninstall timeout.
+
+Package: {package_name}
+Operation: pip uninstall
+Timeout duration: 60 seconds
+Error type: TimeoutExpired
+Error details: {str(e)}
+"""
     except Exception as e:
-        return f"💥 Unexpected error trying to uninstall '{package_name}': {str(e)}"
+        return f"""Package uninstall error.
+
+Package: {package_name}
+Operation: pip uninstall
+Error type: {type(e).__name__}
+Error details: {str(e)}
+"""
 
 def pip_list_packages():
     """List all installed packages in a casual, readable format."""
