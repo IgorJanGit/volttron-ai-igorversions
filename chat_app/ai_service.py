@@ -7,7 +7,6 @@ import inspect
 try:
     from pydantic_ai_slim import Agent
 except ImportError:
-    # Fallback for different package names
     try:
         from pydantic_ai import Agent
     except ImportError:
@@ -26,9 +25,7 @@ from .volttron_commands import (
     smart_install_package
 )
 
-# Initialize the Pydantic AI agent with proper function tools using decorators
 try:
-    # Try to create agent with Pydantic AI
     from pydantic_ai_slim import Agent
     agent = Agent(
         model=None,  # Will be set dynamically
@@ -45,7 +42,6 @@ except ImportError:
         print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
         agent = None
 
-# Register VOLTTRON function tools using @agent.tool_plain decorator
 if agent:
     @agent.tool_plain
     def start_volttron_tool() -> str:
@@ -75,20 +71,20 @@ if agent:
     @agent.tool_plain
     def list_agents_tool() -> str:
         """List all installed VOLTTRON agents."""
-        # Import subprocess locally to avoid any import issues
         import subprocess
         import os
+        from chat_app.volttron_commands import get_volttron_home, find_vctl_command
         
-        # Hard-coded paths that we know work
-        volttron_home = "/home/igorj/volttron-fresh/volttron_home"
-        vctl_path = "/home/igorj/volttron-fresh/venv-fresh/bin/vctl"
+        volttron_home = get_volttron_home()
+        vctl_path = find_vctl_command()
         
-        # Directly run vctl status with the correct paths
+        if not vctl_path:
+            return "❌ Could not find vctl command. Please ensure VOLTTRON is installed."
+        
         try:
             env = os.environ.copy()
             env["VOLTTRON_HOME"] = volttron_home
             
-            # Run the command directly
             result = subprocess.run(
                 [vctl_path, "status"],
                 capture_output=True,
@@ -97,10 +93,8 @@ if agent:
             )
             
             if result.returncode == 0:
-                # Process the output to make it user-friendly
                 output = result.stdout
                 if output.strip():
-                    # Log what we're returning to help debug
                     print(f"DEBUG list_agents_tool returning successful status output: {output}")
                     return f"🤖 **Installed VOLTTRON Agents:**\n\n```\n{output}\n```"
                 else:
@@ -356,7 +350,6 @@ class AIService:
             if os.path.exists(self.conversation_file):
                 with open(self.conversation_file, 'r') as f:
                     data = json.load(f)
-                    # Only load recent history (last 20 messages) to avoid growing too large
                     self.conversation_history = data.get('history', [])[-20:]
                     print(f"Loaded {len(self.conversation_history)} previous conversation messages")
         except Exception as e:
@@ -776,13 +769,11 @@ class AIService:
             tool = self.function_tools[function_name]
             function = tool["function"]
             
-            # Call the function with the provided arguments
             if arguments:
                 result = function(**arguments)
             else:
                 result = function()
             
-            # Track the action for context reversal
             self._track_action_for_reversal(function_name, arguments, result)
             
             return str(result)
@@ -828,15 +819,12 @@ class AIService:
         """
         message_lower = message.lower().strip()
         
-        # Don't check again if we already checked in this session
         if self.volttron_checked:
             return False
         
-        # Check on first interaction (empty conversation history)
         if len(self.conversation_history) == 0:
             return True
         
-        # Check if user is asking general questions that suggest they're new
         general_queries = [
             'hello', 'hi', 'hey', 'start', 'begin', 'help', 'what can you do',
             'how do i', 'getting started', 'setup', 'install', 'volttron',
@@ -844,7 +832,6 @@ class AIService:
             'what agents', 'show me', 'list', 'what can i install'
         ]
         
-        # If message contains any general query terms, check installation
         if any(term in message_lower for term in general_queries):
             return True
         
@@ -857,31 +844,28 @@ class AIService:
         """
         import re
         
-        # Common patterns for referencing numbered options
         patterns = [
             r'option\s*(\d+)',
             r'number\s*(\d+)', 
             r'choice\s*(\d+)',
             r'do\s*(\d+)',
-            r'step\s*(\d+)',              # "step 1", "do step 1" 
-            r'lets?\s+do\s*step\s*(\d+)', # "lets do step 1"
-            r'lets?\s+do\s*(\d+)',        # "lets do 1"
+            r'step\s*(\d+)',
+            r'lets?\s+do\s*step\s*(\d+)',
+            r'lets?\s+do\s*(\d+)',
             r'#(\d+)',
-            r'(\d+)(?:\s*$)',  # Just a number at the end
-            r'can\s+we\s+do\s+(\d+)',  # "can we do 1"
-            r'let\'s\s+do\s+(\d+)',   # "let's do 1"
-            r'pick\s+(\d+)',          # "pick 1"
-            r'select\s+(\d+)',        # "select 1"
-            r'go\s+with\s+(\d+)',     # "go with 1"
+            r'(\d+)(?:\s*$)',
+            r'can\s+we\s+do\s+(\d+)',
+            r'let\'s\s+do\s+(\d+)',
+            r'pick\s+(\d+)',
+            r'select\s+(\d+)',
+            r'go\s+with\s+(\d+)',
         ]
         
         message_lower = message.lower().strip()
         
-        # Special case: "next step" should execute the logical next action
         if "next step" in message_lower:
-            return True, -1  # Use -1 to indicate "next step" action
+            return True, -1
         
-        # Special case: if message is just a number
         if re.match(r'^\s*\d+\s*$', message_lower):
             try:
                 option_num = int(message_lower.strip())
@@ -895,7 +879,6 @@ class AIService:
             if match:
                 try:
                     option_num = int(match.group(1))
-                    # Only consider it a numbered option if it's a reasonable range
                     if 1 <= option_num <= 10:
                         return True, option_num
                 except ValueError:
@@ -911,7 +894,6 @@ class AIService:
         """
         message_lower = message.lower().strip()
         
-        # Enhanced phrases that indicate wanting to reverse/change the last action
         reversal_phrases = [
             "i changed my mind", "i change my mind", "change my mind", "changed my mind",
             "actually don't", "actually, don't", "actually no", "actually, no",
@@ -923,13 +905,10 @@ class AIService:
             "actually", "instead", "rather", "i don't want", "don't want that"
         ]
         
-        # Check if message contains reversal phrases
         for phrase in reversal_phrases:
             if phrase in message_lower:
-                # Set flag to await confirmation
                 self.awaiting_reversal_confirmation = True
                 
-                # First check tracked action
                 if self.last_action == "start_volttron":
                     return True, "It sounds like you want to stop VOLTTRON instead. Should I stop the VOLTTRON platform for you?"
                 elif self.last_action == "stop_volttron":
@@ -950,7 +929,6 @@ class AIService:
                 elif self.last_action:
                     return True, f"It sounds like you want to reverse the last action ({self.last_action}). What would you like me to do instead?"
                 else:
-                    # No tracked action - analyze conversation history more deeply
                     recent_action_suggestion = self._analyze_conversation_for_reversal()
                     if recent_action_suggestion:
                         self.awaiting_reversal_confirmation = True
@@ -966,10 +944,8 @@ class AIService:
         if not hasattr(self, 'conversation_history') or not self.conversation_history:
             return None
         
-        # Look at last 10 messages for better context
         recent_messages = self.conversation_history[-10:]
         
-        # Enhanced action patterns with more specific indicators
         action_patterns = {
             'agent_installation': [
                 'installed successfully', 'agent installed', 'installation complete',
@@ -1002,12 +978,10 @@ class AIService:
             ]
         }
         
-        # Analyze recent messages (both user and AI)
         for message in reversed(recent_messages):
             content = message.get('content', '').lower()
             role = message.get('role', '')
             
-            # Focus on AI responses that indicate completed actions
             if role == 'assistant':
                 for action_type, indicators in action_patterns.items():
                     if any(indicator in content for indicator in indicators):
@@ -1020,11 +994,11 @@ class AIService:
     def _create_reversal_suggestion(self, action_type: str, content: str):
         """Create specific reversal suggestion based on detected action."""
         if action_type == 'agent_installation':
-            # Extract agent details
+           
             if 'listener' in content:
                 self.last_action = "install_agent"
                 self.last_action_details = {"agent_type": "listener"}
-                # Try to extract UUID
+               
                 import re
                 uuid_match = re.search(r'uuid[:\s]+([a-f0-9\-]+|\w+)', content, re.IGNORECASE)
                 if uuid_match:
@@ -1084,7 +1058,7 @@ class AIService:
         """Extract and store numbered options from AI response."""
         import re
         
-        # Pattern to match numbered list items
+        
         pattern = r'(\d+)\.\s*\*\*(.*?)\*\*\s*-\s*(.*?)(?=\n\d+\.|$)'
         matches = re.findall(pattern, response, re.MULTILINE | re.DOTALL)
         
@@ -1103,7 +1077,6 @@ class AIService:
     def _execute_numbered_option(self, option_num: int) -> str:
         """Execute the action for a specific numbered option."""
         
-        # Handle "next step" logic
         if option_num == -1:
             return self._execute_next_step()
         
@@ -1114,7 +1087,6 @@ class AIService:
         title = option['title'].lower()
         description = option['description'].lower()
         
-        # Map option titles to VOLTTRON commands based on common patterns
         if 'current agents' in title or 'what\'s running' in title or 'show' in title and 'agents' in title:
             return vctl_status()
         elif 'platform driver' in title and 'install' in title:
@@ -1124,11 +1096,9 @@ class AIService:
             self._track_action("install_agent", {"agent_type": "listener"})
             return vctl_install_listener_agent()
         elif 'install' in title and ('agent' in title or any(agent in title for agent in ['historian', 'sqlite', 'postgresql', 'bacnet', 'fake-driver', 'protocol', 'lookup', 'scan'])):
-            # Extract agent name from title
             words = title.lower().split()
             agent_name = None
             
-            # Look for agent names in the title
             for word in words:
                 if word in ['sqlite-historian', 'postgresql-historian', 'bacnet-driver', 'fake-driver', 'protocol-proxy', 'bacnet-proxy', 'platform-lookup', 'bacnet-scan']:
                     agent_name = word
@@ -1174,27 +1144,21 @@ class AIService:
             return vctl_uninstall_all_listeners()
         elif ('verify uninstall' in title or 'check uninstall' in title or 'confirm removal' in title or 
               'verify removal' in title or 'check if' in title or 'check removal' in title):
-            # Try to extract agent UUID or name from the message
             words = message.lower().split()
             agent_id = None
             
-            # Look for patterns like "verify uninstall 1", "check removal of agent 1", etc.
             for i, word in enumerate(words):
                 if word in ['verify', 'check', 'confirm']:
-                    # Look ahead for agent identifier after keywords
                     for j in range(i + 1, len(words)):
                         potential_id = words[j]
-                        # Skip common words
                         if potential_id in ['uninstall', 'removal', 'of', 'agent', 'the', 'if', 'was', 'removed', 'that']:
                             continue
-                        # Found a potential agent identifier
                         if potential_id:
                             agent_id = potential_id
                             break
                     if agent_id:
                         break
             
-            # Also check for patterns where the agent ID comes right after 'uninstall' or 'removal'
             if not agent_id:
                 for i, word in enumerate(words):
                     if word in ['uninstall', 'removal'] and i + 1 < len(words):
@@ -1215,23 +1179,19 @@ Please specify which agent to verify removal of. Examples:
 
 Use 'vctl status' to see current agents if you're unsure."""
         elif 'uninstall' in title or 'remove agent' in title or 'delete agent' in title:
-            # Try to extract agent UUID or name from the message
             words = message.lower().split()
             agent_id = None
             
-            # Look for patterns like "uninstall 1", "uninstall agent 1", "remove 1", etc.
             for i, word in enumerate(words):
                 if word in ['uninstall', 'remove', 'delete']:
-                    # Check next word
                     if i + 1 < len(words):
                         next_word = words[i + 1]
-                        if next_word != 'agent':  # Direct ID like "uninstall 1"
+                        if next_word != 'agent':  
                             agent_id = next_word
-                        elif i + 2 < len(words):  # "uninstall agent 1" format
+                        elif i + 2 < len(words):  
                             agent_id = words[i + 2]
                     break
             
-            # Also check for standalone numbers at the end (like "can we uninstall 1")
             if not agent_id:
                 for word in words:
                     if word.isdigit():
@@ -1251,7 +1211,6 @@ Please specify which agent to uninstall. Examples:
 
 💡 **Tip:** Use **"List agents"** first to see available agents with their UUIDs."""
         elif 'config directory' in title or 'create the config directory' in title:
-            # Default response when we can't match
             return f"🎯 Executing option {option_num}: **{option['title']}**\n\n{option['description']}\n\nLet me know if you'd like me to help with this specific task!"
     
     def _execute_next_step(self) -> str:
@@ -1263,7 +1222,7 @@ Please specify which agent to uninstall. Examples:
         elif self.fake_driver_setup_state == "platform_driver_ready":
             return "🎉 **Platform driver installation is complete!**\n\nWhat would you like to do next?\n1. **Check VOLTTRON status** - See how everything is running\n2. **View agent list** - See all your active agents\n3. **Check logs** - See recent activity"
         else:
-            # Default to checking status if we're not sure where we are
+            
             return check_volttron_status()
     
     def _create_agent_with_tools(self):
@@ -1504,23 +1463,18 @@ Please specify which agent to uninstall. Examples:
         ai_api_key = os.getenv("AI_API_KEY")
         
         try:
-            # Use custom OpenAI-compatible API (like PNNL)
             if ai_webapp_url and ai_api_key:
                 self.custom_client = openai.OpenAI(
                     api_key=ai_api_key,
                     base_url=ai_webapp_url
                 )
                 self.custom_model = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
-                # Create agent for custom client with tools
                 self.agent = self._create_agent_with_tools()
-            # Use Ollama if model_name starts with 'ollama:'
             elif self.model_name.startswith("ollama:"):
                 if Agent is not None:
                     from pydantic_ai_slim.models.openai import OpenAIChatModel
                     from pydantic_ai_slim.providers.ollama import OllamaProvider
-                    # Extract model name after provider prefix
                     model_id = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
-                    # Use Ollama provider
                     ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
                     print(f"Connecting to Ollama at: {ollama_base_url}")
                     print(f"Using model: {model_id}")
@@ -1536,7 +1490,6 @@ Please specify which agent to uninstall. Examples:
                     print("Ollama support requires Pydantic AI")
                     self.agent = None
             else:
-                # Use default provider logic (OpenAI, Anthropic, etc.) with pydantic-ai
                 if Agent is not None:
                     self.agent = Agent(
                         self.model_name,
@@ -1544,7 +1497,6 @@ Please specify which agent to uninstall. Examples:
                     )
                     self._register_volttron_tools()
                 else:
-                    # Fallback to OpenAI function calling if Pydantic AI not available
                     print("Using OpenAI function calling (Pydantic AI not available)")
                     self.agent = None
             
@@ -1556,16 +1508,13 @@ Please specify which agent to uninstall. Examples:
     async def generate_response(self, message: str) -> str:
         """Generate a response to the user's message using function tools."""
         try:
-            # CHECK FOR CONTEXTUAL REVERSAL FIRST
             is_reversal, reversal_response = self._detect_context_reversal(message)
             if is_reversal:
                 return reversal_response
             
-            # CHECK FOR CONFIRMATION RESPONSES (yes/no after reversal suggestions)
             if hasattr(self, 'awaiting_reversal_confirmation') and self.awaiting_reversal_confirmation:
                 message_lower = message.lower().strip()
                 if message_lower in ['yes', 'y', 'yeah', 'yep', 'sure', 'ok', 'okay']:
-                    # User confirmed the reversal action
                     self.awaiting_reversal_confirmation = False
                     if self.last_action == "install_agent":
                         agent_type = self.last_action_details.get("agent_type", "agent")
@@ -1580,11 +1529,9 @@ Please specify which agent to uninstall. Examples:
                     else:
                         return "I'm not sure how to reverse that action. What would you like me to do?"
                 elif message_lower in ['no', 'n', 'nope', 'cancel', 'nevermind']:
-                    # User declined the reversal
                     self.awaiting_reversal_confirmation = False
                     return "No problem! I'll leave everything as is. What would you like to do next?"
             
-            # Special override for "what agents are running/installed" query to ensure it always works
             message_lower = message.lower().strip()
             if (('what agents are running' in message_lower) or 
                 ('which agents are running' in message_lower) or
@@ -1596,16 +1543,13 @@ Please specify which agent to uninstall. Examples:
                 print(f"DIRECT OVERRIDE: Executing vctl_status for '{message}' query")
                 return self.call_function_tool("vctl_status", {})
             
-            # Try direct command handling first
             direct_result = self._handle_direct_command(message)
             if direct_result:
                 return direct_result
             
-            # Try Pydantic AI agent first
             if self.agent:
                 return await self._generate_response_with_pydantic_ai(message)
             
-            # Fallback to manual function tools for Claude models or if Pydantic AI unavailable
             return await self._generate_ai_response_with_tools(message)
             
         except Exception as e:
@@ -1618,23 +1562,23 @@ Please specify which agent to uninstall. Examples:
             if not self.agent:
                 raise Exception("Pydantic AI agent not available")
             
-            # Update conversation history in the agent context
+            
             conversation_messages = []
-            for msg in self.conversation_history[-10:]:  # Last 10 messages for context
+            for msg in self.conversation_history[-10:]:  
                 if msg['role'] == 'user':
                     conversation_messages.append(f"User: {msg['content']}")
                 elif msg['role'] == 'assistant':
                     conversation_messages.append(f"Assistant: {msg['content']}")
             
-            # Add context if available
+          
             context_message = ""
             if conversation_messages:
                 context_message = f"\n\nRecent conversation:\n" + "\n".join(conversation_messages)
             
-            # Run the agent with the message and context
+           
             result = await self.agent.arun(message + context_message)
             
-            # Update conversation history
+          
             self.conversation_history.append({"role": "user", "content": message})
             self.conversation_history.append({"role": "assistant", "content": result.data})
             self._save_conversation_history()
@@ -1643,16 +1587,14 @@ Please specify which agent to uninstall. Examples:
             
         except Exception as e:
             print(f"Error in Pydantic AI response generation: {e}")
-            # Fallback to manual approach
+           
             return await self._generate_ai_response_with_tools(message)
     
     async def _generate_ai_response_with_tools(self, message: str) -> str:
         """Generate AI response with function tools support."""
         try:
-            # Check if we're using a Claude model that doesn't support OpenAI function calling
             is_claude_model = "claude" in self.model_name.lower() or "anthropic" in self.model_name.lower()
             
-            # Prepare messages for the AI model
             messages = [
                 {
                     "role": "system", 
@@ -1660,16 +1602,12 @@ Please specify which agent to uninstall. Examples:
                 }
             ]
             
-            # Add conversation history
-            for msg in self.conversation_history[-10:]:  # Last 10 messages for context
+            for msg in self.conversation_history[-10:]: 
                 messages.append(msg)
             
-            # Add current user message
             messages.append({"role": "user", "content": message})
             
-            # For Claude models, use a simpler approach without function calling
             if is_claude_model:
-                # Make API call without function parameters for Claude
                 if self.custom_client:
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
@@ -1686,17 +1624,13 @@ Please specify which agent to uninstall. Examples:
                         temperature=0.7
                     )
                 
-                # Process Claude response and try to extract commands
                 ai_response = response.choices[0].message.content
                 
-                # Try to execute any commands the AI mentions
                 ai_response = self._process_claude_response_for_commands(ai_response, message)
                 
             else:
-                # For OpenAI models, use function calling
                 function_schemas = self.get_function_schemas()
                 
-                # Make API call with function tools
                 if self.custom_client:
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
@@ -1717,19 +1651,14 @@ Please specify which agent to uninstall. Examples:
                         temperature=0.7
                     )
                 
-                # Process the response
                 message_response = response.choices[0].message
                 
-                # Check if the model wants to call a function
                 if message_response.function_call:
-                    # Extract function name and arguments
                     function_name = message_response.function_call.name
                     function_args = json.loads(message_response.function_call.arguments)
                     
-                    # Execute the function
                     function_result = self.execute_function_call(function_name, function_args)
                     
-                    # Create a follow-up message with the function result
                     follow_up_messages = messages + [
                         {
                             "role": "assistant",
@@ -1746,7 +1675,6 @@ Please specify which agent to uninstall. Examples:
                         }
                     ]
                     
-                    # Get final response
                     if self.custom_client:
                         final_response = self.custom_client.chat.completions.create(
                             model=self.custom_model,
@@ -1765,10 +1693,8 @@ Please specify which agent to uninstall. Examples:
                     
                     ai_response = final_response.choices[0].message.content
                 else:
-                    # No function call, just return the AI response
                     ai_response = message_response.content
             
-            # Update conversation history
             self.conversation_history.append({"role": "user", "content": message})
             self.conversation_history.append({"role": "assistant", "content": ai_response})
             self._save_conversation_history()
@@ -1777,54 +1703,53 @@ Please specify which agent to uninstall. Examples:
             
         except Exception as e:
             print(f"Error in AI response generation: {e}")
-            # Fallback to direct command handling
             return self._handle_direct_command(message) or f"❌ I encountered an error: {str(e)}. Please try again."
     
     def _process_claude_response_for_commands(self, ai_response: str, user_message: str) -> str:
         """Process Claude response and try to execute any VOLTTRON commands mentioned."""
         try:
-            # Look for common command patterns in the response
+            
             command_patterns = {
                 r"vctl\s+status": "vctl_status",
                 r"start.*volttron": "start_volttron",
-                r"start.*volltron": "start_volttron",  # Handle common misspelling
+                r"start.*volltron": "start_volttron",
                 r"stop.*volttron": "stop_volttron",
-                r"stop.*volltron": "stop_volttron",   # Handle common misspelling
-                r"list\s+(all\s+)?agents(?!\s+\w)": "vctl_list_agents",  # Match "list agents" but not "list agent tags"
+                r"stop.*volltron": "stop_volttron",
+                r"list\s+(all\s+)?agents(?!\s+\w)": "vctl_list_agents",
                 r"install.*(the|a)?.*platform.*driver": "vctl_install_platform_driver",
                 r"install.*(the|a)?.*listener.*agent": "vctl_install_listener_agent",
-                # r"install.*agent": "vctl_install_listener_agent",  # DISABLED - too broad
+                
                 r"show.*logs": "show_recent_logs",
                 r"health.*check": "vctl_health"
             }
             
-            # Special handling for "what agents are running" and similar queries
+           
             if any(phrase in user_message.lower() for phrase in [
                 'what agents are running', 'which agents are running', 'show running agents',
                 'list running agents', 'show agents running', 'tell me running agents'
             ]):
-                # Execute vctl_status directly for these specific queries
+               
                 return self.call_function_tool("vctl_status", {})
             
-            # Check user message and AI response for command patterns
+         
             text_to_check = (user_message + " " + ai_response).lower()
             
-            # Try to execute relevant commands
+         
             executed_commands = []
             for pattern, function_name in command_patterns.items():
                 if re.search(pattern, text_to_check):
                     try:
                         if function_name in self.function_tools:
-                            # Get the actual function from the function tools registry
+                         
                             func = self.function_tools[function_name]["function"]
                             result = func()
                             
-                            # Super minimal output - only show essential status
+                           
                             if "start_volttron" in function_name:
-                                # After starting, check if it's actually running
+                               
                                 try:
                                     import time
-                                    time.sleep(2)  # Wait a moment for startup
+                                    time.sleep(2)  
                                     status_func = self.function_tools.get("check_volttron_status", {}).get("function")
                                     if status_func:
                                         status_result = status_func()
@@ -1838,21 +1763,21 @@ Please specify which agent to uninstall. Examples:
                                     executed_commands.append("\n❌ VOLTTRON startup verification failed")
                                     
                             elif "check_volttron_status" in function_name:
-                                # Only show for explicit status checks, not automatic ones
+                              
                                 if "is.*running" in text_to_check or "status" in user_message.lower():
                                     if "running" in result.lower() and "✅" in result:
                                         executed_commands.append("\n✅ Running")
                                     else:
                                         executed_commands.append("\n❌ Not running")
                                         
-                            # Don't show output for other commands unless there's an error
+                           
                             elif "❌" in result or "Error" in result or "failed" in result.lower():
                                 executed_commands.append(f"\n❌ {function_name} failed")
                                 
                     except Exception as e:
                         executed_commands.append(f"\n❌ {function_name} error")
             
-            # Append minimal status to AI response
+           
             if executed_commands:
                 ai_response += "".join(executed_commands)
             
@@ -1892,7 +1817,7 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         """Handle direct VOLTTRON commands without AI processing."""
         message_lower = message.lower().strip()
         
-        # Enhanced "what's running" analysis with context awareness
+      
         if any(phrase in message_lower for phrase in [
             'what is running', 'what\'s running', 'what running', 'whats running',
             'show me what running', 'tell me what running', 'inform me what running',
@@ -1900,22 +1825,22 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         ]):
             return self._handle_whats_running_question(message_lower)
         
-        # Simple VOLTTRON platform status questions
+
         elif any(phrase in message_lower for phrase in [
             'is volttron running', 'is platform running', 'volttron running'
         ]):
-            # For simple yes/no questions about the platform itself
+        
             from chat_app.volttron_commands import is_volttron_running
             return is_volttron_running()
         
-        # Status commands
+     
         if message_lower in ['status', 'vctl status', 'agent status', 'check status']:
             return self.call_function_tool("vctl_status", {})
         elif message_lower in ['is volttron running', 'check if volttron is running', 'volttron running']:
             return self.call_function_tool("simple_volttron_status_check", {})
         elif message_lower in ['volttron status', 'platform status', 'check volttron']:
             return self.call_function_tool("check_volttron_status", {})
-        # More comprehensive pattern matching for "what agents are running/installed"
+     
         elif any(all(word in message_lower for word in combo) for combo in [
             ['what', 'agents', 'running'], 
             ['which', 'agents', 'running'],
@@ -1934,10 +1859,10 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             ['agents', 'status']
         ]):
             print(f"Detected agent status pattern in '{message}' - executing vctl_status directly")
-            # Directly show agent status when explicitly asked about running agents
+            
             return self.call_function_tool("vctl_status", {})
         
-        # Individual agent status queries
+
         agent_status_patterns = [
             r'(?:what|whats|show|check)?\s*status\s+(?:of\s+)?(?:agent\s+)?([a-z0-9]+)',
             r'(?:what|whats|show|check)?\s*(?:agent\s+)?([a-z0-9]+)\s+status',
@@ -1949,17 +1874,16 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                # Make sure it's a reasonable agent ID (short identifier)
+           
                 if len(agent_id) <= 5 and agent_id not in ['the', 'it', 'that', 'this', 'what', 'how', 'is']:
-                    # Return the full status but with focus on the specific agent
+        
                     status_result = self.call_function_tool("vctl_status", {})
                     if agent_id in status_result:
                         return status_result
                     else:
                         return f"🔍 **Looking for agent '{agent_id}'...**\n\n{status_result}"
         
-        # Start/Stop commands with better spelling handling and flexible matching
-        # Match variations like "start", "start up", "startup", with optional "the" and common typos
+       
         start_volttron_patterns = [
             r'\b(?:start|startup|launch|boot|fire\s*up|bring\s*up|turn\s*on)(?:\s+up)?(?:\s+the)?\s+(?:volttron|volltron|volltrron|voltrron|voltron|platform)\b',
             r'\bvolttron\s+(?:start|startup|launch)\b',
@@ -1970,15 +1894,15 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             r'\bvolttron\s+(?:stop|shutdown)\b',
         ]
         
-        # Check for start patterns
+    
         if any(re.search(pattern, message_lower) for pattern in start_volttron_patterns):
             return self.call_function_tool("start_volttron", {})
         
-        # Check for stop patterns  
+  
         if any(re.search(pattern, message_lower) for pattern in stop_volttron_patterns):
             return self.call_function_tool("stop_volttron", {})
         
-        # Install commands
+    
         elif any(phrase in message_lower for phrase in [
             'install listener', 'install volttron-listener', 'install volttron listener',
             'vctl install listener', 'vctl install volttron-listener',
@@ -1986,7 +1910,7 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         ]):
             return self.call_function_tool("vctl_install_listener_agent", {})
             
-        # Agent removal commands with tag and force option - enhanced pattern matching
+
         force_remove_patterns = [
             "force remove agent", "force delete agent", "force remove tag", 
             "remove agent force", "delete agent force", "remove with force",
@@ -1998,50 +1922,50 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         ]
         
         if any(pattern in message_lower for pattern in force_remove_patterns):
-            # Try to extract the tag/agent identifier
+            
             words = message_lower.split()
             agent_tag = None
             
-            # Try pattern: agent DIGIT (or single letter)
+            
             digit_pattern = re.search(r'agent\s+([0-9a-z])(?:\s+|$)', message_lower)
             if digit_pattern:
                 agent_tag = digit_pattern.group(1)
                 return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
                 
-            # Try direct number pattern - standalone digits
+            
             digit_pattern = re.search(r'(?:remove|delete|kill)\s+([0-9])(?:\s+|$)', message_lower)
             if digit_pattern:
                 agent_tag = digit_pattern.group(1)
                 return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
                 
-            # Look for the word "tag" and get the next word
+            
             if "tag" in words:
                 tag_index = words.index("tag")
                 if tag_index < len(words) - 1:
                     agent_tag = words[tag_index + 1]
                     return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
             
-            # Look for patterns like "force remove agent [tag]"
+            
             for keyword in ["agent", "with", "tagged", "named", "number", "id", "uuid", "identity"]:
                 if keyword in words:
                     keyword_index = words.index(keyword)
                     if keyword_index < len(words) - 1:
                         agent_tag = words[keyword_index + 1]
-                        # Skip common words that aren't likely to be tags
+                        
                         if agent_tag not in ["force", "forcefully", "using", "that", "is", "was", "the", "a"]:
                             return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
             
-            # Handle "force remove 9" type pattern (just a number)
+            
             for force_word in ["force", "forcefully", "aggressively"]:
                 if force_word in words:
                     force_index = words.index(force_word)
-                    # Check words after "force"
+                    
                     for i in range(force_index+1, min(force_index+5, len(words))):
                         if words[i].isdigit() or (len(words[i]) == 1 and words[i].isalpha()):
                             agent_tag = words[i]
                             return self.call_function_tool("vctl_force_remove_agent", {"agent_tag": agent_tag})
             
-            # If we couldn't extract a tag, ask for clarification
+            
             return """Which agent would you like to force remove? Please specify the agent tag or number.
 
 Examples:
@@ -2051,7 +1975,7 @@ Examples:
 
 You can use "vctl status" to see all agents and their tags."""
         
-        # Fake driver commands - COMPLETE SETUP
+        
         elif any(phrase in message_lower for phrase in [
             'install fake driver', 'setup fake driver', 'set up fake driver',
             'set up the fake driver', 'setup the fake driver', 'install the fake driver',
@@ -2060,7 +1984,7 @@ You can use "vctl status" to see all agents and their tags."""
             'setup fake', 'set up fake', 'install fake', 'set up the fake'
         ]):
             return self.call_function_tool("setup_fake_driver_complete", {})
-        # Just install the library (not full setup)
+        
         elif any(phrase in message_lower for phrase in [
             'install volttron-lib-fake-driver', 'install fake driver library',
             'install fake library', 'install the fake driver library'
@@ -2078,7 +2002,7 @@ You can use "vctl status" to see all agents and their tags."""
             'watch fake data', 'monitor fake data'
         ]):
             return self.call_function_tool("watch_fake_driver_logs", {})
-        # General logs commands
+        
         elif any(phrase in message_lower for phrase in [
             'show logs', 'view logs', 'see logs', 'check logs', 
             'show recent logs', 'view recent logs', 'see recent logs',
@@ -2087,33 +2011,32 @@ You can use "vctl status" to see all agents and their tags."""
             'want to see logs', 'check the logs', 'look at logs'
         ]):
             return self.call_function_tool("show_recent_logs", {})
-        # List commands
+        
         elif message_lower in ['list available agents', 'available agents', 'what agents can i install']:
             return self.call_function_tool("list_available_agents", {})
         elif message_lower in ['list agents', 'show agents', 'what agents', 'installed agents', 'what agents are installed']:
-            # Use vctl_status directly for better reliability
+            
             return self.call_function_tool("vctl_status", {})
         
-        # FLEXIBLE INSTALLATION - Handle "install X" with smart detection
-        # This catches general installation requests and intelligently routes them
+        
         install_general_patterns = [
-            r'install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # install X or install the X
-            r'can\s+you\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # can you install X
-            r'please\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # please install X
-            r'i\s+(?:want|need)\s+to\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # I want to install X
-            r'(?:add|get|setup|set\s+up)\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  # add/get/setup X
+            r'install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  
+            r'can\s+you\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  
+            r'please\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  
+            r'i\s+(?:want|need)\s+to\s+install\s+(?:the\s+)?(\S+(?:\s+\S+)?)', 
+            r'(?:add|get|setup|set\s+up)\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  
         ]
         
-        # Check if this is a general install request (not caught by specific handlers above)
+       
         for pattern in install_general_patterns:
             match = re.search(pattern, message_lower)
             if match:
                 package_name = match.group(1).strip()
-                # Skip if it's a specific command we already handle
+               
                 skip_terms = ['fake driver', 'listener', 'logs', 'status', 'agent status']
                 if any(term in package_name for term in skip_terms):
                     continue
-                # Remove common filler words
+               
                 package_name = package_name.replace(' agent', '').replace(' package', '').strip()
                 if package_name and package_name not in ['the', 'a', 'an', 'it', 'this', 'that']:
                     return self.call_function_tool("smart_install_package", {
@@ -2121,30 +2044,30 @@ You can use "vctl status" to see all agents and their tags."""
                         "user_message": message
                     })
         
-        # Uninstall/verification commands with pattern matching
+        
         if ('verify uninstall' in message_lower or 'check uninstall' in message_lower or 
             'confirm removal' in message_lower or 'verify removal' in message_lower or 
             'check if' in message_lower or 'check removal' in message_lower):
-            # Extract agent identifier
+           
             words = message_lower.split()
             agent_id = None
             
             for i, word in enumerate(words):
                 if word in ['verify', 'check', 'confirm']:
-                    # Look ahead for agent identifier after keywords
+                    
                     for j in range(i + 1, len(words)):
                         potential_id = words[j]
-                        # Skip common words
+                        
                         if potential_id in ['uninstall', 'removal', 'of', 'agent', 'the', 'if', 'was', 'removed', 'that']:
                             continue
-                        # Found a potential agent identifier
+                        
                         if potential_id:
                             agent_id = potential_id
                             break
                     if agent_id:
                         break
             
-            # Also check for patterns where the agent ID comes right after 'uninstall' or 'removal'
+            
             if not agent_id:
                 for i, word in enumerate(words):
                     if word in ['uninstall', 'removal'] and i + 1 < len(words):
@@ -2156,7 +2079,7 @@ You can use "vctl status" to see all agents and their tags."""
             if agent_id:
                 return self.call_function_tool("verify_agent_uninstalled", {"agent_identifier": agent_id})
         
-        # Pattern matching for uninstall commands
+       
         uninstall_patterns = [
             r'uninstall\s+(\w+)',
             r'remove\s+(\w+)', 
@@ -2173,77 +2096,62 @@ You can use "vctl status" to see all agents and their tags."""
                 if agent_id and agent_id not in ['agent', 'the', 'platform']:
                     return self.call_function_tool("vctl_uninstall_agent", {"agent_uuid_or_tag": agent_id})
         
-        # Pattern matching for pip install commands
+        
         pip_install_patterns = [
             r'pip\s+install\s+(\S+)',
             r'install\s+package\s+(\S+)',
             r'add\s+package\s+(\S+)',
             r'pip\s+add\s+(\S+)',
             r'install\s+with\s+pip\s+(\S+)',
-            r'install\s+the\s+(\S+-\S+)(?:\s+package)?',  # Hyphenated package names with "the"
-            r'install\s+(\S+-\S+)',  # Hyphenated package names
-            r'install\s+the\s+platform\s+driver',  # Special case for platform driver
-            r'install\s+platform\s+driver',  # Special case for platform driver
+            r'install\s+the\s+(\S+-\S+)(?:\s+package)?',
+            r'install\s+(\S+-\S+)',  
+            r'install\s+the\s+platform\s+driver',  
+            r'install\s+platform\s+driver', 
             r'install\s+the\s+(\S+)(?:\s+package)?',
             r'install\s+(\S+)(?:\s+agent)?',
             r'install\s+(\S+)(?:\s+using\s+pip)?',
             r'can\s+you\s+install\s+(\S+)'
         ]
         
-        # Special case for "platform driver" before pattern matching
+       
         if ("install platform driver" in message_lower or 
             "install the platform driver" in message_lower or 
             "install a platform driver" in message_lower):
-            # Skip pip install and directly call vctl_install_platform_driver
-            # which will handle both pip install AND vctl install
+          
             return self.call_function_tool("vctl_install_platform_driver", {})
         
         for pattern in pip_install_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                # Handle special case patterns that don't have capture groups
                 if pattern == r'install\s+the\s+platform\s+driver' or pattern == r'install\s+platform\s+driver':
                     package_name = "platform-driver"
                 else:
                     package_name = match.group(1)
                 
-                # Skip common words that aren't likely to be packages
                 if package_name and package_name not in ['package', 'the', 'a', 'an', 'that', 'it', 'this', 'agent']:
-                    # Handle special cases for volttron packages - install as agents, not just pip packages
                     if package_name == "platform-driver" or package_name == "platform":
-                        # For platform driver, use vctl_install_platform_driver to properly install the agent
                         if "platform driver" in message_lower:
                             return self.call_function_tool("vctl_install_platform_driver", {})
                         else:
                             package_name = "volttron-platform-driver"
                     elif package_name == "listener":
-                        # For listener, use vctl_install_listener_agent to properly install the agent
                         return self.call_function_tool("vctl_install_listener_agent", {})
                     elif package_name == "sqlite-historian":
-                        # For sqlite historian, use generic agent installer
                         return self.call_function_tool("vctl_install_agent", {"agent_name": "sqlite-historian"})
                     elif package_name == "platform_driver":
-                        # For platform_driver, use vctl_install_platform_driver
                         return self.call_function_tool("vctl_install_platform_driver", {})
                     
-                    # Look for multi-word package names that may have been truncated
-                    # Check for platform driver specifically in the original message
                     elif package_name == "platform" and ("platform driver" in message_lower):
                         return self.call_function_tool("vctl_install_platform_driver", {})
-                    
-                    # Check if this might be a VOLTTRON agent
-                    # If package name is in AVAILABLE_AGENTS, route to agent installer
-                    elif package_name in ["fake-driver", "bacnet-driver", "postgresql-historian", 
-                                        "protocol-proxy", "bacnet-proxy", "bacnet-scan", "platform-lookup"]:
-                        return self.call_function_tool("vctl_install_agent", {"agent_name": package_name})
-                    
-                    # For normal pip packages, proceed with pip install
-                    # Check if upgrade flag is present
-                    upgrade = "--upgrade" in message_lower or "upgrade" in message_lower
-                    
-                    return self.call_function_tool("pip_install", {"package_name": package_name, "upgrade": upgrade})
+                
+                elif package_name in ["fake-driver", "bacnet-driver", "postgresql-historian", 
+                                    "protocol-proxy", "bacnet-proxy", "bacnet-scan", "platform-lookup"]:
+                    return self.call_function_tool("vctl_install_agent", {"agent_name": package_name})
+                
+                upgrade = "--upgrade" in message_lower or "upgrade" in message_lower
+                
+                return self.call_function_tool("pip_install", {"package_name": package_name, "upgrade": upgrade})
         
-        # Pattern matching for pip uninstall commands
         pip_uninstall_patterns = [
             r'pip\s+uninstall\s+(\S+)',
             r'uninstall\s+package\s+(\S+)',
@@ -2258,46 +2166,38 @@ You can use "vctl status" to see all agents and their tags."""
                 if package_name and package_name not in ['package', 'the']:
                     return self.call_function_tool("pip_uninstall", {"package_name": package_name})
         
-        # Pattern matching for pip list commands
         if any(phrase in message_lower for phrase in [
             'pip list', 'list packages', 'show packages', 'what packages', 'pip show',
             'installed packages', 'list installed'
         ]):
             return self.call_function_tool("pip_list", {})
         
-        # Pattern matching for "start all agents" command
         if any(phrase in message_lower for phrase in [
             'start all agents', 'start all agent', 'start everything', 'start them all',
             'run all agents', 'run all agent', 'start every agent', 'get all agents running'
         ]):
             return self.call_function_tool("vctl_start_all_agents", {})
         
-        # Enhanced pattern matching for agent commands with natural language
-        # Look for agent references in conversational format
         agent_reference_patterns = [
-            r'start.*?\*\*([a-z0-9]+)\*\*',  # "start this one • **b** - volttron..."
-            r'start.*?•\s*\*\*([a-z0-9]+)\*\*',  # More specific bullet pattern
-            r'start.*?(?:agent\s+)?([a-z0-9]+)\s*-\s*volttron',  # "start agent b - volttron..."
-            r'start.*?(?:uuid\s*:?\s*)?([a-z0-9]+)(?:\s*\)|$)',  # "start agent (b)" or "start UUID: b"
+            r'start.*?\*\*([a-z0-9]+)\*\*',
+            r'start.*?•\s*\*\*([a-z0-9]+)\*\*',
+            r'start.*?(?:agent\s+)?([a-z0-9]+)\s*-\s*volttron',
+            r'start.*?(?:uuid\s*:?\s*)?([a-z0-9]+)(?:\s*\)|$)',
         ]
         
         for pattern in agent_reference_patterns:
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                # Make sure it's a valid agent ID (single letter or short number)
                 if len(agent_id) <= 3 and agent_id not in ['the', 'one', 'it', 'this', 'that']:
                     return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": agent_id})
         
-        # Simple conversational agent commands
+
         if any(phrase in message_lower for phrase in [
             'start listener', 'start the listener', 'run listener', 'run the listener'
         ]):
-            # Try to start the most recently mentioned listener or first available
             return self.call_function_tool("vctl_start_agent", {"agent_uuid_or_tag": "b"})
         
-        # Pattern matching for start/stop agent commands (basic patterns)
-        # BUT: Skip if this looks like a VOLTTRON platform command
         start_patterns = [
             r'start\s+(\w+)',
             r'start\s+agent\s+(\w+)'
@@ -2307,12 +2207,10 @@ You can use "vctl status" to see all agents and their tags."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                # Exclude VOLTTRON platform variations, common misspellings, and filler words
                 volttron_variations = [
                     'agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform', 
                     'the', 'this', 'that', 'one', 'it', 'up', 'of', 'a', 'an', 'my', 'our'
                 ]
-                # Also check if the full message contains "volttron" - if so, skip agent logic
                 if 'volttron' in message_lower or 'volltron' in message_lower or 'voltron' in message_lower:
                     continue
                 if agent_id and agent_id not in volttron_variations:
@@ -2327,20 +2225,18 @@ You can use "vctl status" to see all agents and their tags."""
             match = re.search(pattern, message_lower)
             if match:
                 agent_id = match.group(1)
-                # Exclude VOLTTRON platform variations and filler words
                 volttron_variations = [
                     'agent', 'volttron', 'volltron', 'volltrron', 'voltrron', 'voltron', 'platform',
                     'the', 'this', 'that', 'one', 'it', 'of', 'a', 'an', 'my', 'our'
                 ]
-                # Also check if the full message contains "volttron" - if so, skip agent logic
                 if 'volttron' in message_lower or 'volltron' in message_lower or 'voltron' in message_lower:
                     continue
                 if agent_id and agent_id not in volttron_variations:
                     return self.call_function_tool("vctl_stop_agent", {"agent_uuid_or_tag": agent_id})
         
-        return None  # No direct command matched
+        return None  
     
-    # Additional methods that were preserved
+
     def _should_check_volttron_installation(self, message: str) -> bool:
         """
         Determine if we should check VOLTTRON installation based on the message content.
@@ -2348,15 +2244,15 @@ You can use "vctl status" to see all agents and their tags."""
         """
         message_lower = message.lower().strip()
         
-        # Don't check if we already checked recently
+       
         if self.volttron_checked:
             return False
             
-        # First message of the session
+  
         if len(self.conversation_history) == 0:
             return True
             
-        # General VOLTTRON questions
+     
         general_keywords = [
             'help', 'what can you do', 'how does this work', 'what is volttron',
             'get started', 'tutorial', 'how to', 'what should i do',
@@ -2369,7 +2265,6 @@ You can use "vctl status" to see all agents and their tags."""
         """Enhanced contextual reversal detection with conversation history analysis."""
         message_lower = message.lower().strip()
         
-        # Direct reversal phrases
         reversal_phrases = [
             'i changed my mind', 'change my mind', 'changed my mind',
             'i want to undo', 'undo that', 'undo it', 'undo',
@@ -2384,7 +2279,6 @@ You can use "vctl status" to see all agents and their tags."""
         is_reversal = any(phrase in message_lower for phrase in reversal_phrases)
         
         if is_reversal and self.last_action:
-            # Set flag to await confirmation
             self.awaiting_reversal_confirmation = True
             
             if self.last_action == "install_agent":
@@ -2411,23 +2305,23 @@ You can use "vctl status" to see all agents and their tags."""
     def _handle_whats_running_question(self, message_lower: str) -> str:
         """Handle 'what's running' questions with context analysis and clarification."""
         
-        # First, try to infer from context what they're asking about
+
         context_clues = {
             'volttron': ['volttron', 'platform', 'system', 'daemon'],
             'agents': ['agent', 'agents', 'service', 'services', 'listener', 'driver'],
             'processes': ['process', 'processes', 'pid', 'background']
         }
         
-        # Check conversation history for recent context
+
         recent_context = ""
         if hasattr(self, 'conversation_history') and self.conversation_history:
-            # Look at last few messages for context
+
             recent_messages = self.conversation_history[-5:]
             for msg in recent_messages:
                 if isinstance(msg, dict) and 'content' in msg:
                     recent_context += msg['content'].lower() + " "
         
-        # Add current message to context (handle VOLTTRON typos)
+
         normalized_message = message_lower
         volttron_typos = ['volltron', 'volltrron', 'voltrron', 'voltron']
         for typo in volttron_typos:
@@ -2435,39 +2329,39 @@ You can use "vctl status" to see all agents and their tags."""
         
         full_context = (recent_context + " " + normalized_message).lower()
         
-        # Score different interpretations based on context
+        
         scores = {}
         for category, keywords in context_clues.items():
             scores[category] = sum(1 for keyword in keywords if keyword in full_context)
         
-        # Determine most likely interpretation
+        
         max_score = max(scores.values()) if scores.values() else 0
         
         if max_score > 0:
-            # Find the category with highest score
+            
             likely_category = max(scores, key=scores.get)
             
-            # Check if there are tied scores (ambiguous context)
+            
             tied_categories = [cat for cat, score in scores.items() if score == max_score]
             
             if len(tied_categories) > 1:
-                # Ambiguous context - ask for clarification
-                pass  # Fall through to clarification section
+               
+                pass 
             elif likely_category == 'volttron':
-                # They're asking about the VOLTTRON platform specifically
+               
                 from chat_app.volttron_commands import is_volttron_running
                 return is_volttron_running()
             elif likely_category == 'agents':
-                # They're asking about agents specifically
+               
                 return self.call_function_tool("vctl_status", {})
             else:
-                # Default to showing everything
+                
                 return self.call_function_tool("vctl_status", {})
         
-        # No clear context - ask for clarification with helpful options
+       
         from chat_app.volttron_commands import is_volttron_running, vctl_status
         
-        # Quick check if VOLTTRON is running to provide better context
+       
         volttron_status = is_volttron_running()
         is_platform_running = volttron_status.lower() in ['yes', 'true'] or "✅" in volttron_status or "running" in volttron_status.lower()
         
