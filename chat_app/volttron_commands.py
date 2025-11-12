@@ -894,18 +894,23 @@ I'll get it started for you! ⚡
             
             if result.returncode == 0:
                 status_output = result.stdout.strip() if result.stdout else ""
+                header = result.stderr.strip() if result.stderr else ""
+                
+                # Combine header and output for complete table
+                full_output = ""
+                if header and "UUID" in header:
+                    full_output = header + "\n" + status_output
+                else:
+                    full_output = status_output
                 
                 return f"""VOLTTRON agent status check completed.
 
-Platform running: {is_running}
+Platform running: Yes
 Status command success: True
 VOLTTRON_HOME: {volttron_home}
 
-Agent status output:
-{status_output if status_output else 'No agents installed'}
-
-System warnings:
-{result.stderr if result.stderr else 'None'}
+Agent status:
+{full_output if full_output else 'No agents installed'}
 
 Command used: {vctl_cmd} status
 """
@@ -3185,6 +3190,117 @@ Need help getting it set up? Just ask! 🚀
         return "⏱️ Timeout reading log file - it might be very large"
     except Exception as e:
         return f"💥 Error showing fake driver logs: {str(e)}"
+
+def check_fake_driver_status():
+    """Check if the fake driver is actively publishing data by examining recent logs.
+    
+    This function checks the actual log activity to determine if the fake driver is working,
+    not just whether the library is installed. Returns structured data for AI interpretation.
+    
+    Returns:
+        str: Structured status information about fake driver operation
+    """
+    try:
+        # Find VOLTTRON log file
+        volttron_home = get_volttron_home()
+        log_paths = [
+            os.path.join(volttron_home, "volttron.log"),
+            os.path.expanduser("~/volttron-fresh/volttron_home/volttron.log"),
+            os.path.expanduser("~/.volttron/volttron.log"),
+            "volttron.log",
+        ]
+        
+        volttron_log = None
+        for path in log_paths:
+            if os.path.exists(path):
+                volttron_log = path
+                break
+        
+        if not volttron_log:
+            return """Fake driver status check completed.
+Status: Unable to determine
+Reason: VOLTTRON log file not found
+Log file searched: Multiple standard locations
+Recommendation: Start VOLTTRON with logging enabled"""
+        
+        # Read recent lines from the log (last 100 lines should be enough)
+        result = subprocess.run([
+            "tail", "-100", volttron_log
+        ], capture_output=True, text=True, timeout=10)
+        
+        if result.returncode == 0:
+            log_lines = result.stdout.strip().split('\n')
+            
+            # Filter for fake driver activity
+            fake_lines = []
+            for line in log_lines:
+                lower_line = line.lower()
+                if any(keyword in lower_line for keyword in [
+                    'fake', 'devices/campus/building/fake'
+                ]):
+                    fake_lines.append(line)
+            
+            # Determine status based on log activity
+            if fake_lines:
+                # Count publishing events
+                publish_count = sum(1 for line in fake_lines if 'publishing:' in line.lower())
+                
+                # Extract timestamp from last line if available
+                last_line = fake_lines[-1] if fake_lines else None
+                
+                return f"""Fake driver status check completed.
+Status: Active and publishing
+Activity found: Yes
+Recent log entries: {len(fake_lines)} in last 100 lines
+Publishing events detected: {publish_count}
+Log file: {volttron_log}
+Last activity: {last_line[:80] if last_line else 'N/A'}...
+
+Fake driver is operational and publishing data."""
+            else:
+                # Check if volttron-lib-fake-driver is installed
+                pip_cmd = find_pip_command()
+                if pip_cmd:
+                    check_result = subprocess.run(
+                        [pip_cmd, "show", "volttron-lib-fake-driver"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    library_installed = check_result.returncode == 0
+                else:
+                    library_installed = False
+                
+                return f"""Fake driver status check completed.
+Status: Not publishing
+Activity found: No
+Recent log entries: 0 in last 100 lines
+Log file: {volttron_log}
+Lines scanned: {len(log_lines)}
+Library installed: {library_installed}
+
+No fake driver activity detected in recent logs.
+This could indicate:
+- Fake driver library not installed
+- Platform driver not running
+- Fake device not configured
+- VOLTTRON not actively running"""
+        else:
+            return f"""Fake driver status check completed.
+Status: Unable to read logs
+Error: Failed to read log file
+Log file: {volttron_log}
+Return code: {result.returncode}"""
+            
+    except subprocess.TimeoutExpired:
+        return """Fake driver status check completed.
+Status: Timeout
+Error: Log file read timeout (file may be very large)"""
+    except Exception as e:
+        return f"""Fake driver status check completed.
+Status: Error
+Error type: {type(e).__name__}
+Error message: {str(e)}"""
 
 def watch_fake_driver_logs():
     """Provide instructions for watching fake driver logs in real-time.

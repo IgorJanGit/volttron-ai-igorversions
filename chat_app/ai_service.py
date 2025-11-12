@@ -20,7 +20,7 @@ from .volttron_commands import (
     vctl_uninstall_agent, vctl_uninstall_all_listeners, vctl_install_listener_agent,
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
-    show_fake_driver_logs, watch_fake_driver_logs, setup_fake_driver_complete,
+    show_fake_driver_logs, check_fake_driver_status, watch_fake_driver_logs, setup_fake_driver_complete,
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
     smart_install_package
 )
@@ -234,6 +234,15 @@ if agent:
             num_lines: Number of recent log lines to check (default: 50)
         """
         return show_fake_driver_logs(num_lines)
+
+    @agent.tool_plain
+    def check_fake_driver_status_tool() -> str:
+        """Check if the fake driver is actively publishing data by examining recent logs.
+        
+        This checks actual log activity to determine if fake driver is working, not just installation status.
+        Returns clear status information based on real-time log analysis.
+        """
+        return check_fake_driver_status()
 
     @agent.tool_plain
     def watch_fake_driver_logs_tool() -> str:
@@ -647,6 +656,18 @@ class AIService:
                                 "default": 50
                             }
                         },
+                        "required": []
+                    }
+                }
+            },
+            "check_fake_driver_status": {
+                "function": check_fake_driver_status,
+                "schema": {
+                    "name": "check_fake_driver_status",
+                    "description": "Check if fake driver is actively publishing data by examining recent log activity. Returns status based on actual log data, not just installation.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
                         "required": []
                     }
                 }
@@ -1744,38 +1765,12 @@ Please specify which agent to uninstall. Examples:
                             func = self.function_tools[function_name]["function"]
                             result = func()
                             
-                           
-                            if "start_volttron" in function_name:
-                               
-                                try:
-                                    import time
-                                    time.sleep(2)  
-                                    status_func = self.function_tools.get("check_volttron_status", {}).get("function")
-                                    if status_func:
-                                        status_result = status_func()
-                                        if "running" in status_result.lower() and "✅" in status_result:
-                                            executed_commands.append("\n✅ VOLTTRON started and running")
-                                        else:
-                                            executed_commands.append("\n❌ VOLTTRON failed to start (likely configuration or permission issue)")
-                                    else:
-                                        executed_commands.append("\n✅ VOLTTRON start command completed")
-                                except:
-                                    executed_commands.append("\n❌ VOLTTRON startup verification failed")
+                            # Return the actual function result without modification
+                            # Let the AI interpret the structured data naturally
+                            executed_commands.append(f"\n{result}")
                                     
-                            elif "check_volttron_status" in function_name:
-                              
-                                if "is.*running" in text_to_check or "status" in user_message.lower():
-                                    if "running" in result.lower() and "✅" in result:
-                                        executed_commands.append("\n✅ Running")
-                                    else:
-                                        executed_commands.append("\n❌ Not running")
-                                        
-                           
-                            elif "❌" in result or "Error" in result or "failed" in result.lower():
-                                executed_commands.append(f"\n❌ {function_name} failed")
-                                
                     except Exception as e:
-                        executed_commands.append(f"\n❌ {function_name} error")
+                        executed_commands.append(f"\n❌ {function_name} error: {str(e)}")
             
            
             if executed_commands:
@@ -1875,7 +1870,9 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             if match:
                 agent_id = match.group(1)
            
-                if len(agent_id) <= 5 and agent_id not in ['the', 'it', 'that', 'this', 'what', 'how', 'is']:
+                # Exclude common words and the word "agent" itself
+                excluded_words = ['the', 'it', 'that', 'this', 'what', 'how', 'is', 'agent', 'agents', 'are', 'all']
+                if len(agent_id) <= 5 and agent_id not in excluded_words:
         
                     status_result = self.call_function_tool("vctl_status", {})
                     if agent_id in status_result:
@@ -1996,6 +1993,12 @@ You can use "vctl status" to see all agents and their tags."""
             'see fake driver', 'fake driver output'
         ]):
             return self.call_function_tool("show_fake_driver_logs", {})
+        elif any(phrase in message_lower for phrase in [
+            'is fake driver working', 'fake driver working', 'check fake driver',
+            'fake driver status', 'is the fake driver running', 'fake driver running',
+            'verify fake driver', 'test fake driver', 'fake driver operational'
+        ]):
+            return self.call_function_tool("check_fake_driver_status", {})
         elif any(phrase in message_lower for phrase in [
             'watch fake driver', 'monitor fake driver', 'tail fake driver',
             'watch fake logs', 'monitor fake logs', 'tail fake logs',
