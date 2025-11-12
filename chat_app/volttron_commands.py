@@ -3099,22 +3099,10 @@ def show_fake_driver_logs(num_lines=50):
                 break
         
         if not volttron_log:
-            return """
-📋 **No VOLTTRON log file found**
-
-To enable logging and see fake driver data:
-
-**Step 1:** Start VOLTTRON with logging:
-```bash
-volttron -vv -l volttron.log &
-```
-
-**Step 2:** Once running, ask me to "show fake driver logs" again
-
-**Alternative:** Check if VOLTTRON is already running with:
-• Ask me: "Show VOLTTRON status"
-• Check: `ps aux | grep volttron`
-"""
+            return f"""Fake driver logs check completed.
+Status: Log file not found
+Paths searched: {', '.join(log_paths)}
+Recommendation: Start VOLTTRON with logging (volttron -vv -l volttron.log)"""
         
         # Read recent lines from the log
         result = subprocess.run([
@@ -3139,52 +3127,32 @@ volttron -vv -l volttron.log &
                 display_lines = fake_lines[-20:]
                 log_display = '\n'.join(display_lines)
                 
-                return f"""
-📊 **Fake Driver Data Logs** (Last {len(display_lines)} entries)
+                return f"""Fake driver logs retrieved successfully.
+Status: Active
+Log file: {volttron_log}
+Total lines scanned: {num_lines}
+Fake driver entries found: {len(fake_lines)}
+Entries displayed: {len(display_lines)}
 
-```
+Recent fake driver log entries:
 {log_display}
-```
 
-**📁 Log file location:** `{volttron_log}`
-
-**🔍 What you're seeing:**
-• Device data published by the fake driver
-• Topics: `devices/campus/building/fake/*`
-• Simulated sensor readings (temperature, EKG, etc.)
-
-**💡 To watch logs in real-time:**
-```bash
-tail -f {volttron_log} | grep -i fake
-```
-
-**Or ask me:**
-• "Watch fake driver logs" - For live monitoring instructions
-• "Show recent logs" - For all VOLTTRON activity
-"""
+Log file path: {volttron_log}
+Data topics: devices/campus/building/fake/*"""
             else:
-                return f"""
-📋 **No fake driver activity found in logs**
+                return f"""Fake driver logs check completed.
+Status: No activity found
+Log file: {volttron_log}
+Lines scanned: {len(log_lines)}
+Fake driver entries: 0
 
-**Log file checked:** `{volttron_log}`
-**Lines scanned:** {len(log_lines)}
-
-**This could mean:**
-❌ Fake driver library not installed
-❌ Platform driver not running
-❌ Fake device not configured
-❌ No data being published yet
-
-**Troubleshooting steps:**
-1. **Install fake driver:** Ask me "install fake driver library"
-2. **Check platform driver:** Ask me "show agent status"
-3. **Check VOLTTRON status:** Ask me "is volttron running"
-4. **View all logs:** Ask me "show recent logs"
-
-Need help getting it set up? Just ask! 🚀
-"""
+No fake driver activity detected in recent logs.
+Possible causes: Fake driver library not installed, platform driver not running, fake device not configured, or no data published yet."""
         else:
-            return f"❌ Error reading log file: {volttron_log}"
+            return f"""Fake driver logs check completed.
+Status: Error reading log file
+Log file: {volttron_log}
+Return code: {result.returncode}"""
             
     except subprocess.TimeoutExpired:
         return "⏱️ Timeout reading log file - it might be very large"
@@ -4346,7 +4314,10 @@ Would you like me to help troubleshoot this issue?
 """
 
 def get_recent_fake_data_from_logs():
-    """Get recent fake driver data from VOLTTRON logs."""
+    """Get recent fake driver data from VOLTTRON logs.
+    
+    Returns structured data about fake driver activity, not hardcoded responses.
+    """
     try:
         # Look for volttron.log in common locations
         volttron_home = get_volttron_home()
@@ -4365,18 +4336,11 @@ def get_recent_fake_data_from_logs():
                 break
         
         if not volttron_log:
-            return """
-📡 **Subscription ready, but no recent log data found**
-
-Your fake sensors should be publishing, but I couldn't find recent log files.
-
-**To see live data:**
-1. **Direct subscribe**: `vctl subscribe devices/campus/building/fake`
-2. **Check VOLTTRON status**: Ask me "Show VOLTTRON status"
-3. **Start VOLTTRON**: Ask me "Start VOLTTRON" if it's not running
-
-Your fake driver configuration is ready! 🚀
-"""
+            return f"""Fake driver log check completed.
+Status: Log file not found
+Log paths searched: {', '.join(log_paths)}
+Recommendation: Start VOLTTRON with logging enabled (volttron -vv -l volttron.log)
+Configuration status: Ready (log file needed)"""
         
         # Get recent lines from the log that mention fake driver
         result = subprocess.run([
@@ -4388,41 +4352,40 @@ Your fake driver configuration is ready! 🚀
             fake_lines = [line for line in lines if 'fake' in line.lower() and ('devices/campus/building/fake' in line or 'driver' in line)]
             
             if fake_lines:
-                recent_lines = fake_lines[-5:]  # Last 5 relevant lines
+                recent_lines = fake_lines[-5:]
                 log_display = '\n'.join(recent_lines)
                 
-                return f"""
-📡 **Recent fake driver activity from logs:**
+                return f"""Fake driver log check completed.
+Status: Active
+Log file: {volttron_log}
+Lines scanned: 100
+Fake driver entries found: {len(fake_lines)}
+Recent entries shown: {len(recent_lines)}
 
-```
+Recent log output:
 {log_display}
-```
 
-**🎯 Your fake driver is active!**
-
-**To see live streaming data:**
-- **Real-time**: `vctl subscribe devices/campus/building/fake`
-- **Fresh samples**: Keep asking "Subscribe to fake data"
-- **More logs**: Ask "Show recent logs"
-
-Data is being published every 5 seconds! 🚀⚡
-"""
+Fake driver is actively publishing data."""
             else:
-                return """
-📡 **VOLTTRON is running but no recent fake driver data in logs**
+                return f"""Fake driver log check completed.
+Status: No activity detected
+Log file: {volttron_log}
+Lines scanned: 100
+Fake driver entries found: 0
 
-This might mean:
-- **Fake driver needs restart**: Ask me "Restart platform driver"
-- **Configuration issue**: Ask me "Show VOLTTRON status"
-- **Data publishing elsewhere**: Try `vctl subscribe devices/campus/building/fake`
-
-Let me help you troubleshoot! 🔧
-"""
+No recent fake driver activity in logs.
+Possible reasons: Platform driver not running, fake device not configured, or VOLTTRON just started."""
         
-        return "❌ Could not read VOLTTRON logs to check fake driver activity"
+        return f"""Fake driver log check completed.
+Status: Error reading logs
+Log file: {volttron_log}
+Return code: {result.returncode}"""
         
     except Exception as e:
-        return f"❌ Error checking logs for fake data: {str(e)}"
+        return f"""Fake driver log check completed.
+Status: Error
+Error type: {type(e).__name__}
+Error message: {str(e)}"""
 
 def show_recent_logs():
     """Show recent VOLTTRON logs with focus on fake driver and agent activity."""
@@ -4445,24 +4408,21 @@ def show_recent_logs():
                 break
         
         if not volttron_log:
-            return f"""
-📋 **No VOLTTRON log file found**
+            searched_paths = [
+                f"{volttron_home}/volttron.log",
+                os.path.expanduser('~/volttron-fresh/volttron_home/volttron.log'),
+                os.path.expanduser('~/.volttron/volttron.log'),
+                "volttron.log",
+                "/tmp/volttron.log",
+                "/var/log/volttron.log"
+            ]
+            return f"""VOLTTRON logs check completed.
+Status: Log file not found
+VOLTTRON_HOME: {volttron_home}
+Paths searched:
+{chr(10).join(f'  - {p}' for p in searched_paths)}
 
-I looked in these locations:
-- `{volttron_home}/volttron.log`
-- `{os.path.expanduser('~/volttron-fresh/volttron_home/volttron.log')}`
-- `{os.path.expanduser('~/.volttron/volttron.log')}`
-- `volttron.log` (current directory)
-- `/tmp/volttron.log`
-- `/var/log/volttron.log`
-
-**To start logging:**
-1. **Start VOLTTRON with logging**: `volttron -vv -l volttron.log &`
-2. **Check if running**: Ask me "Show VOLTTRON status"
-3. **Generate some activity**: Ask me "Subscribe to fake data"
-
-Once VOLTTRON is running with logging, I can show you live activity! 🚀
-"""
+Recommendation: Start VOLTTRON with logging enabled using command: volttron -vv -l volttron.log"""
         
         result = subprocess.run([
             "tail", "-200", volttron_log
@@ -4508,80 +4468,59 @@ Once VOLTTRON is running with logging, I can show you live activity! 🚀
                 
                 if device_data:
                     devices_list = sorted(device_data.keys())
-                    grid_rows = []
                     
-                    for i in range(0, len(devices_list), 3):
-                        row_devices = devices_list[i:i+3]
-                        row_parts = []
-                        for dev in row_devices:
-                            latest_time = device_data[dev][-1] if device_data[dev] else "N/A"
-                            row_parts.append(f"📡 {dev[:20]:<20} {latest_time}")
-                        grid_rows.append("  " + " | ".join(row_parts))
+                    # Build device list with timestamps
+                    device_list = []
+                    for dev in devices_list:
+                        times = device_data[dev]
+                        latest_time = times[-1] if times else "N/A"
+                        device_list.append(f"{dev}: {latest_time} (last seen)")
                     
-                    grid_output = '\n'.join(grid_rows)
+                    device_output = '\n'.join(device_list)
                     
-                    timeline = []
-                    for dev in devices_list[:12]:  # Show up to 12 devices
+                    # Build timeline for first 12 devices
+                    timeline_list = []
+                    for dev in devices_list[:12]:
                         times = device_data[dev]
                         if times:
-                            timeline.append(f"  📊 {dev[:18]:<18} → {' → '.join(times[-3:])}")
+                            timeline_list.append(f"{dev}: {' -> '.join(times[-3:])}")
                     
-                    timeline_output = '\n'.join(timeline)
+                    timeline_output = '\n'.join(timeline_list) if timeline_list else "No timeline data"
                 else:
-                    grid_output = '\n'.join(interesting_lines[-10:])
-                    timeline_output = "No device data parsed"
+                    device_output = "No device data parsed"
+                    timeline_output = "No device data"
                 
-                return f"""
-📊 **Fake Driver Status: ACTIVE** ✅
+                return f"""VOLTTRON recent logs check completed.
+Status: Activity detected
+Log file: {volttron_log}
+Lines scanned: 200
+Device publishing entries: {len(device_lines)}
+Other interesting entries: {len(other_interesting_lines)}
+Devices active: {len(device_data)}
 
-**🎯 Live Device Grid** ({len(device_data)} devices publishing)
-```
-{grid_output}
-```
+Active devices:
+{device_output}
 
-**📈 Recent Activity Timeline**
-```
+Recent activity timeline:
 {timeline_output}
-```
 
-**📊 System Status:**
-```
-Platform Driver:  ✅ Running        Devices Active:  {len(device_data)}
-Log File:         {volttron_log.split('/')[-1]:<20}Status:          🟢 Streaming
-```
-
-**💡 Next Actions:**
-• **Install listener** → "install listener agent" (see device values)
-• **Check agents** → "show agents" (view all agents)
-• **Live monitor** → `tail -f {volttron_log}`
-
-🎉 **Your fake driver is working perfectly!** All {len(device_data)} devices are actively publishing simulated sensor data.
-"""
+Platform driver status: Active and publishing
+Log file path: {volttron_log}"""
             else:
-                return f"""
-📋 **VOLTTRON is running but activity is quiet**
+                return f"""VOLTTRON recent logs check completed.
+Status: No activity
+Log file: {volttron_log}
+Lines scanned: {len(log_lines)}
+Device publishing entries: 0
+Other interesting entries: 0
 
-**Log file found**: `{volttron_log}`
-**Recent entries**: {len(log_lines)} lines total
-
-The log doesn't show recent fake driver or agent activity. This might mean:
-
-**Possible reasons:**
-- **VOLTTRON just started** - No activity yet
-- **Platform driver not active** - May need restart
-- **Fake device not configured** - Check configuration
-- **Logging level too low** - May need verbose logging
-
-**Try these:**
-1. **Generate activity**: Ask "Subscribe to fake data"
-2. **Check status**: Ask "Show VOLTTRON status"
-3. **Restart driver**: Ask about platform driver restart
-4. **Manual check**: `tail -f {volttron_log}`
-
-Let me help you get some activity going! 🚀
-"""
+No recent fake driver or significant agent activity detected.
+This may indicate: VOLTTRON just started, platform driver not active, fake device not configured, or low logging verbosity."""
         else:
-            return f"❌ Could not read VOLTTRON log file: {volttron_log}"
+            return f"""VOLTTRON logs check completed.
+Status: Could not read log file
+Log file: {volttron_log}
+Return code: {result.returncode}"""
             
     except subprocess.TimeoutExpired:
         return "❌ Timeout while reading VOLTTRON logs"
