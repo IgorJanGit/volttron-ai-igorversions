@@ -22,7 +22,7 @@ from .volttron_commands import (
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
     show_fake_driver_logs, check_fake_driver_status, watch_fake_driver_logs, setup_fake_driver_complete,
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
-    smart_install_package
+    smart_install_package, search_github_for_agent, install_agent_from_github
 )
 
 try:
@@ -275,6 +275,24 @@ if agent:
     def start_all_agents_tool() -> str:
         """Start all available VOLTTRON agents that are not currently running."""
         return vctl_start_all_agents()
+
+    @agent.tool_plain
+    def search_github_for_agent_tool(agent_name: str) -> str:
+        """Search eclipse-volttron GitHub organization for agent repositories when local agent not found.
+        
+        Args:
+            agent_name: The name of the agent to search for on GitHub
+        """
+        return search_github_for_agent(agent_name)
+
+    @agent.tool_plain
+    def install_agent_from_github_tool(repo_url: str) -> str:
+        """Install a VOLTTRON agent from a GitHub repository URL.
+        
+        Args:
+            repo_url: The GitHub repository URL or clone URL to install from
+        """
+        return install_agent_from_github(repo_url)
 
     @agent.tool_plain
     def run_vctl_help_tool(subcommand: str = None) -> str:
@@ -722,6 +740,40 @@ class AIService:
                             }
                         },
                         "required": ["agent_tag"]
+                    }
+                }
+            },
+            "search_github_for_agent": {
+                "function": search_github_for_agent,
+                "schema": {
+                    "name": "search_github_for_agent",
+                    "description": "Search eclipse-volttron GitHub organization repositories for an agent when it's not found locally. Returns matching repositories with URLs for user confirmation before installation.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "agent_name": {
+                                "type": "string",
+                                "description": "The name of the agent to search for on GitHub"
+                            }
+                        },
+                        "required": ["agent_name"]
+                    }
+                }
+            },
+            "install_agent_from_github": {
+                "function": install_agent_from_github,
+                "schema": {
+                    "name": "install_agent_from_github",
+                    "description": "Install a VOLTTRON agent from a GitHub repository URL after user confirms. Use this after search_github_for_agent when user confirms which repository to install.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo_url": {
+                                "type": "string",
+                                "description": "The GitHub repository URL or clone URL to install the agent from"
+                            }
+                        },
+                        "required": ["repo_url"]
                     }
                 }
             },
@@ -1851,18 +1903,20 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             ['tell', 'installed', 'agents'],
             ['report', 'agents', 'running'],
             ['report', 'agents', 'installed'],
-            ['agents', 'status']
+            ['agents', 'status'],
+            ['agent', 'status']  # Added to catch "what is agent status"
         ]):
             print(f"Detected agent status pattern in '{message}' - executing vctl_status directly")
             
             return self.call_function_tool("vctl_status", {})
         
 
+        # Check for specific agent status queries (must come AFTER general status check)
         agent_status_patterns = [
-            r'(?:what|whats|show|check)?\s*status\s+(?:of\s+)?(?:agent\s+)?([a-z0-9]+)',
-            r'(?:what|whats|show|check)?\s*(?:agent\s+)?([a-z0-9]+)\s+status',
-            r'how\s+is\s+(?:agent\s+)?([a-z0-9]+)(?:\s+doing)?',
-            r'is\s+(?:agent\s+)?([a-z0-9]+)\s+(?:running|active|up)',
+            r'(?:what|whats|show|check)?\s*status\s+(?:of\s+)?(?:the\s+)?([a-z0-9\-_]+)\s+agent',  # "status of listener agent"
+            r'(?:what|whats|show|check)?\s*(?:the\s+)?([a-z0-9\-_]+)\s+agent\s+status',  # "listener agent status"
+            r'how\s+is\s+(?:the\s+)?([a-z0-9\-_]+)\s+agent(?:\s+doing)?',  # "how is listener agent"
+            r'is\s+(?:the\s+)?([a-z0-9\-_]+)\s+agent\s+(?:running|active|up)',  # "is listener agent running"
         ]
         
         for pattern in agent_status_patterns:
@@ -1870,9 +1924,9 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             if match:
                 agent_id = match.group(1)
            
-                # Exclude common words and the word "agent" itself
-                excluded_words = ['the', 'it', 'that', 'this', 'what', 'how', 'is', 'agent', 'agents', 'are', 'all']
-                if len(agent_id) <= 5 and agent_id not in excluded_words:
+                # Exclude common generic words
+                excluded_words = ['the', 'it', 'that', 'this', 'what', 'how', 'is', 'agent', 'agents', 'are', 'all', 'my', 'your', 'their', 'a', 'an']
+                if agent_id not in excluded_words:
         
                     status_result = self.call_function_tool("vctl_status", {})
                     if agent_id in status_result:

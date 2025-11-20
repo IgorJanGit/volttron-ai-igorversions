@@ -2,6 +2,8 @@ import subprocess
 import os
 import sys
 import shutil
+import requests
+import json
 from pathlib import Path
 
 
@@ -99,40 +101,12 @@ AVAILABLE_AGENTS = {
         'description': 'Fake driver library for testing and development',
         'category': 'Driver Library'
     },
-    'bacnet-driver': {
-        'package': 'volttron-lib-bacnet-driver',
-        'vip_identity': 'bacnet_driver',
-        'description': 'BACnet driver library for building automation',
-        'category': 'Driver Library'
-    },
+    # Note: bacnet-driver is on GitHub, not PyPI - search GitHub to install
     
-    # Protocol Libraries
-    'protocol-proxy': {
-        'package': 'lib-protocol-proxy',
-        'vip_identity': 'protocol_proxy',
-        'description': 'Protocol proxy library for device communication',
-        'category': 'Protocol'
-    },
-    'bacnet-proxy': {
-        'package': 'lib-protocol-proxy-bacnet',
-        'vip_identity': 'bacnet_proxy',
-        'description': 'BACnet protocol proxy for building automation',
-        'category': 'Protocol'
-    },
+    # Note: Protocol libraries are on GitHub, not PyPI - search GitHub to install
     
     # Tools
-    'platform-lookup': {
-        'package': 'platform-lookup',
-        'vip_identity': 'platform_lookup',
-        'description': 'Platform lookup service for agent discovery',
-        'category': 'Tool'
-    },
-    'bacnet-scan': {
-        'package': 'bacnet-scan-tool',
-        'vip_identity': 'bacnet_scanner',
-        'description': 'BACnet network scanning tool',
-        'category': 'Tool'
-    }
+    # Note: Most tools are on GitHub, not PyPI - search GitHub to install
 }
 
 def format_volttron_warnings(stderr_output):
@@ -2463,12 +2437,20 @@ def vctl_install_agent(agent_name):
         agent_name = agent_name.lower().replace('_', '-').replace(' ', '-')
         
         if agent_name not in AVAILABLE_AGENTS:
-            available_agents = list_available_agents()
-            return f"""❌ **Agent '{agent_name}' not found**
+            # Try searching GitHub for the agent
+            print(f"Agent '{agent_name}' not in local registry, searching GitHub...")
+            github_result = search_github_for_agent(agent_name)
+            
+            return f"""Agent '{agent_name}' not found in local registry.
 
-{available_agents}
+Searched GitHub eclipse-volttron organization:
 
-💡 **Tip**: Try asking "what agents can I install?" to see all options."""
+{github_result}
+
+To install from GitHub, you can:
+1. Use the install_agent_from_github function with the URL
+2. Or ask me to "install agent from <github-url>"
+"""
         
         agent_info = AVAILABLE_AGENTS[agent_name]
         vctl_cmd = find_vctl_command()
@@ -2588,6 +2570,223 @@ def list_available_agents():
 • **sqlite-historian** - Perfect for storing sensor data"""
     
     return output
+
+def search_github_for_agent(agent_name):
+    """Search eclipse-volttron GitHub organization for agent repositories.
+    
+    Searches through all pages of repositories to find matches.
+    
+    Args:
+        agent_name (str): The agent name to search for
+        
+    Returns:
+        str: Structured data about found repositories or search results
+    """
+    try:
+        # Search GitHub API for eclipse-volttron organization repositories
+        org_url = "https://api.github.com/orgs/eclipse-volttron/repos"
+        
+        all_repos = []
+        page = 1
+        max_pages = 10  # Safety limit to prevent infinite loops
+        pages_scanned = 0
+        
+        # Fetch all repository pages
+        while page <= max_pages:
+            params = {
+                'type': 'public',
+                'per_page': 100,
+                'sort': 'updated',
+                'page': page
+            }
+            
+            response = requests.get(org_url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                if page == 1:
+                    # Failed on first page
+                    return f"""GitHub agent search completed.
+Status: API request failed
+Status code: {response.status_code}
+Agent searched: {agent_name}
+Organization: eclipse-volttron
+Error: Unable to fetch repository list"""
+                else:
+                    # Failed on subsequent page, use what we have
+                    break
+            
+            repos = response.json()
+            
+            # If empty page, we've reached the end
+            if not repos:
+                break
+            
+            all_repos.extend(repos)
+            pages_scanned = page
+            
+            # If we got fewer than 100 repos, this is the last page
+            if len(repos) < 100:
+                break
+            
+            page += 1
+        
+        # Search for matching repositories
+        agent_lower = agent_name.lower().replace('-', '').replace('_', '')
+        matches = []
+        
+        for repo in all_repos:
+            repo_name = repo['name'].lower()
+            repo_name_normalized = repo_name.replace('-', '').replace('_', '')
+            
+            # Check if agent name is in repo name
+            if agent_lower in repo_name_normalized or repo_name_normalized in agent_lower:
+                matches.append({
+                    'name': repo['name'],
+                    'url': repo['html_url'],
+                    'clone_url': repo['clone_url'],
+                    'description': repo['description'] or 'No description available',
+                    'updated': repo['updated_at'],
+                    'stars': repo['stargazers_count']
+                })
+        
+        if not matches:
+            return f"""GitHub agent search completed.
+Status: No matches found
+Agent searched: {agent_name}
+Organization: eclipse-volttron
+Pages scanned: {pages_scanned}
+Repositories scanned: {len(all_repos)}
+Matches found: 0
+
+No repositories matching '{agent_name}' were found in the eclipse-volttron organization.
+Suggestion: Try a different agent name or check available agents."""
+        
+        # Sort by stars and recency
+        matches.sort(key=lambda x: (x['stars'], x['updated']), reverse=True)
+        
+        # Format the matches
+        if len(matches) == 1:
+            match = matches[0]
+            return f"""GitHub agent search completed.
+Status: Match found
+Agent searched: {agent_name}
+Pages scanned: {pages_scanned}
+Repositories scanned: {len(all_repos)}
+Matches found: 1
+
+Repository found:
+Name: {match['name']}
+URL: {match['url']}
+Clone URL: {match['clone_url']}
+Description: {match['description']}
+Stars: {match['stars']}
+Last updated: {match['updated']}
+
+Question: Is this the agent you want to install? (yes/no)
+If yes, I can install it using: vctl install {match['clone_url']}"""
+        else:
+            # Multiple matches
+            matches_list = []
+            for i, match in enumerate(matches[:5], 1):  # Show top 5
+                matches_list.append(f"{i}. {match['name']}")
+                matches_list.append(f"   URL: {match['url']}")
+                matches_list.append(f"   Description: {match['description']}")
+                matches_list.append(f"   Stars: {match['stars']}")
+            
+            matches_output = '\n'.join(matches_list)
+            
+            return f"""GitHub agent search completed.
+Status: Multiple matches found
+Agent searched: {agent_name}
+Pages scanned: {pages_scanned}
+Repositories scanned: {len(all_repos)}
+Matches found: {len(matches)}
+Top results shown: {min(5, len(matches))}
+
+Found repositories:
+{matches_output}
+
+Question: Which one do you want? (enter number 1-{min(5, len(matches))})
+Or provide more specific agent name."""
+        
+    except requests.exceptions.Timeout:
+        return f"""GitHub agent search completed.
+Status: Timeout
+Agent searched: {agent_name}
+Error: Request to GitHub API timed out after 10 seconds"""
+    except requests.exceptions.RequestException as e:
+        return f"""GitHub agent search completed.
+Status: Network error
+Agent searched: {agent_name}
+Error type: {type(e).__name__}
+Error message: {str(e)}"""
+    except Exception as e:
+        return f"""GitHub agent search completed.
+Status: Error
+Agent searched: {agent_name}
+Error type: {type(e).__name__}
+Error message: {str(e)}"""
+
+def install_agent_from_github(repo_url):
+    """Install a VOLTTRON agent from a GitHub repository URL.
+    
+    Args:
+        repo_url (str): The GitHub repository URL or clone URL
+        
+    Returns:
+        str: Structured data about the installation process
+    """
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return """Agent installation from GitHub failed.
+Status: vctl command not found
+Recommendation: Ensure VOLTTRON is installed properly"""
+        
+        # Extract repo name from URL for tagging
+        repo_name = repo_url.rstrip('/').split('/')[-1]
+        if repo_name.endswith('.git'):
+            repo_name = repo_name[:-4]
+        
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        # Try to install using vctl install with the GitHub URL
+        result = subprocess.run(
+            [vctl_cmd, "install", repo_url, "--tag", repo_name, "--start"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=120
+        )
+        
+        return f"""Agent installation from GitHub completed.
+Repository: {repo_url}
+Repository name: {repo_name}
+Command: vctl install {repo_url} --tag {repo_name} --start
+Return code: {result.returncode}
+Success: {result.returncode == 0}
+VOLTTRON_HOME: {volttron_home}
+
+stdout:
+{result.stdout}
+
+stderr:
+{result.stderr if result.stderr else 'None'}"""
+        
+    except subprocess.TimeoutExpired:
+        return f"""Agent installation from GitHub completed.
+Status: Timeout
+Repository: {repo_url}
+Error: Installation took longer than 120 seconds"""
+    except Exception as e:
+        return f"""Agent installation from GitHub completed.
+Status: Error
+Repository: {repo_url}
+Error type: {type(e).__name__}
+Error message: {str(e)}"""
 
 def find_pip_command():
     """Find pip command from ACTIVE virtual environment (proper way!)."""
