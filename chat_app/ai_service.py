@@ -22,7 +22,19 @@ from .volttron_commands import (
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
     show_fake_driver_logs, check_fake_driver_status, watch_fake_driver_logs, setup_fake_driver_complete,
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
-    smart_install_package, search_github_for_agent, install_agent_from_github
+    smart_install_package, search_github_for_agent, install_agent_from_github,
+    list_volttron_packages, list_running_agents, install_from_github_smart, list_all_installations
+)
+from .sqlite_historian import (
+    install_sqlite_historian,
+    create_sqlite_historian_config,
+    check_sqlite_historian_status
+)
+from .postgresql_historian import (
+    install_postgresql_historian,
+    create_postgresql_historian_config,
+    check_postgresql_historian_status,
+    get_postgresql_setup_instructions
 )
 
 try:
@@ -295,6 +307,88 @@ if agent:
         return install_agent_from_github(repo_url)
 
     @agent.tool_plain
+    def install_from_github_smart_tool(repo_url: str) -> str:
+        """Intelligently analyze and install from any GitHub repository.
+        
+        Reads the README, detects installation method (pip, poetry, ansible, vctl, etc.)
+        and provides appropriate installation instructions or executes installation.
+        
+        Use this when the installation method is unknown or for non-standard repos.
+        
+        Args:
+            repo_url: The GitHub repository URL
+        """
+        return install_from_github_smart(repo_url)
+
+    @agent.tool_plain
+    def list_all_installations_tool() -> str:
+        """List everything installed: agents, pip packages, Ansible roles, and more.
+        
+        Shows comprehensive installation status across all tools:
+        - VOLTTRON agents (vctl status)
+        - Python packages (pip list for volttron-*)
+        - Ansible roles (ansible-galaxy list)
+        - Other tool-specific installations
+        
+        Use this for any query about what's installed.
+        """
+        return list_all_installations()
+
+    @agent.tool_plain
+    def install_sqlite_historian_tool(config_path: str = None) -> str:
+        """Install and configure VOLTTRON SQLite historian agent.
+        
+        Installs the volttron-sqlite-historian package which stores time-series data
+        in a SQLite database. Creates default configuration if none provided.
+        
+        Args:
+            config_path: Optional path to custom configuration file
+        """
+        return install_sqlite_historian(config_path)
+
+    @agent.tool_plain
+    def check_sqlite_historian_status_tool() -> str:
+        """Check if SQLite historian is installed and running.
+        
+        Returns status information about the SQLite historian agent.
+        """
+        return check_sqlite_historian_status()
+
+    @agent.tool_plain
+    def install_postgresql_historian_tool(config_path: str = None, dbname: str = "volttron",
+                                          host: str = None, port: int = 5432,
+                                          user: str = None, password: str = None,
+                                          timescale: bool = False) -> str:
+        """Install and configure VOLTTRON PostgreSQL historian agent.
+        
+        Args:
+            config_path: Optional path to custom configuration file
+            dbname: Database name (default: "volttron")
+            host: Database host (if None, uses Unix socket)
+            port: Database port (default: 5432)
+            user: Database user
+            password: Database password
+            timescale: Enable TimescaleDB support (default: False)
+        """
+        return install_postgresql_historian(config_path, dbname, host, port, user, password, timescale)
+
+    @agent.tool_plain
+    def check_postgresql_historian_status_tool() -> str:
+        """Check if PostgreSQL historian is installed and running.
+        
+        Returns status information about the PostgreSQL historian agent.
+        """
+        return check_postgresql_historian_status()
+
+    @agent.tool_plain
+    def get_postgresql_setup_instructions_tool() -> str:
+        """Get detailed setup instructions for PostgreSQL historian.
+        
+        Returns SQL commands and configuration steps for database setup.
+        """
+        return get_postgresql_setup_instructions()
+
+    @agent.tool_plain
     def run_vctl_help_tool(subcommand: str = None) -> str:
         """Run vctl --help to learn about available commands.
         
@@ -325,7 +419,6 @@ if agent:
         """
         result = intelligent_vctl_command_discovery(user_intent, context)
         
-        # Format the response nicely
         response = f"**Command Discovery Results:**\n\n"
         response += f"**Intent:** {user_intent}\n"
         response += f"**Help Consulted:** {', '.join(result['help_consulted'])}\n"
@@ -356,17 +449,14 @@ class AIService:
         self.function_tools = {}  # Registry of available function tools (for fallback)
         self.system_prompt = self._get_volttron_system_prompt()  # Initialize system prompt
         
-        # Setup the agent with the correct model and system prompt
         if self.agent:
             try:
-                # Update agent model and system prompt
                 self.agent.model = model_name
                 self.agent.system_prompt = self.system_prompt
             except Exception as e:
                 print(f"Warning: Could not configure Pydantic AI agent: {e}")
                 self.agent = None
         
-        # Fallback function tools registration for non-Pydantic AI usage
         self._register_fallback_function_tools()
         self._load_conversation_history()  # Load any previous conversation
         self._setup_agent()
@@ -386,7 +476,6 @@ class AIService:
     def _save_conversation_history(self):
         """Save conversation history to file."""
         try:
-            # Only save last 20 messages to keep file size reasonable
             data = {
                 'history': self.conversation_history[-20:],
                 'timestamp': str(os.path.getmtime(self.conversation_file)) if os.path.exists(self.conversation_file) else None
@@ -777,6 +866,129 @@ class AIService:
                     }
                 }
             },
+            "install_from_github_smart": {
+                "function": install_from_github_smart,
+                "schema": {
+                    "name": "install_from_github_smart",
+                    "description": "Intelligently analyze any GitHub repository and determine how to install it. Detects pip, poetry, ansible, copier templates, documentation sites, and provides appropriate installation instructions. Use this when installation method is unclear or for non-standard repositories.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo_url": {
+                                "type": "string",
+                                "description": "The GitHub repository URL to analyze and install"
+                            }
+                        },
+                        "required": ["repo_url"]
+                    }
+                }
+            },
+            "list_all_installations": {
+                "function": list_all_installations,
+                "schema": {
+                    "name": "list_all_installations",
+                    "description": "List everything installed: VOLTTRON agents (vctl), pip packages (volttron-*), Ansible roles, and other installations. Use for any 'what is installed' or installation status query.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "install_sqlite_historian": {
+                "function": install_sqlite_historian,
+                "schema": {
+                    "name": "install_sqlite_historian",
+                    "description": "Install and configure VOLTTRON SQLite historian agent for storing time-series data in a SQLite database",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "config_path": {
+                                "type": "string",
+                                "description": "Optional path to custom configuration file. If not provided, creates default config"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
+            "check_sqlite_historian_status": {
+                "function": check_sqlite_historian_status,
+                "schema": {
+                    "name": "check_sqlite_historian_status",
+                    "description": "Check if SQLite historian is installed and running",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "install_postgresql_historian": {
+                "function": install_postgresql_historian,
+                "schema": {
+                    "name": "install_postgresql_historian",
+                    "description": "Install and configure VOLTTRON PostgreSQL historian agent for storing time-series data in a PostgreSQL database. Supports local Unix socket and remote connections, with optional TimescaleDB support.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "config_path": {
+                                "type": "string",
+                                "description": "Optional path to custom configuration file. If not provided, creates default config"
+                            },
+                            "dbname": {
+                                "type": "string",
+                                "description": "Database name. Default: 'volttron'"
+                            },
+                            "host": {
+                                "type": "string",
+                                "description": "Database host. If not provided, uses Unix socket for local connection"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "description": "Database port. Default: 5432"
+                            },
+                            "user": {
+                                "type": "string",
+                                "description": "Database user. Required for remote connections"
+                            },
+                            "password": {
+                                "type": "string",
+                                "description": "Database password. Required for remote connections"
+                            },
+                            "timescale": {
+                                "type": "boolean",
+                                "description": "Enable TimescaleDB hypertable support. Default: false"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
+            "check_postgresql_historian_status": {
+                "function": check_postgresql_historian_status,
+                "schema": {
+                    "name": "check_postgresql_historian_status",
+                    "description": "Check if PostgreSQL historian is installed and running in VOLTTRON platform",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "get_postgresql_setup_instructions": {
+                "function": get_postgresql_setup_instructions,
+                "schema": {
+                    "name": "get_postgresql_setup_instructions",
+                    "description": "Get detailed setup instructions and SQL commands for configuring PostgreSQL database for VOLTTRON historian. Includes table creation, user permissions, and optional TimescaleDB setup.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
             "show_recent_logs": {
                 "function": show_recent_logs,
                 "schema": {
@@ -855,7 +1067,6 @@ class AIService:
     
     def _track_action_for_reversal(self, function_name: str, arguments: Dict, result: str):
         """Track function calls for contextual reversal detection."""
-        # Check for uninstall/remove first (more specific)
         if "uninstall" in function_name or "remove" in function_name:
             self.last_action = "uninstall_agent"
             self.last_action_details = {
@@ -1817,8 +2028,6 @@ Please specify which agent to uninstall. Examples:
                             func = self.function_tools[function_name]["function"]
                             result = func()
                             
-                            # Return the actual function result without modification
-                            # Let the AI interpret the structured data naturally
                             executed_commands.append(f"\n{result}")
                                     
                     except Exception as e:
@@ -1911,7 +2120,6 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             return self.call_function_tool("vctl_status", {})
         
 
-        # Check for specific agent status queries (must come AFTER general status check)
         agent_status_patterns = [
             r'(?:what|whats|show|check)?\s*status\s+(?:of\s+)?(?:the\s+)?([a-z0-9\-_]+)\s+agent',  # "status of listener agent"
             r'(?:what|whats|show|check)?\s*(?:the\s+)?([a-z0-9\-_]+)\s+agent\s+status',  # "listener agent status"
@@ -1924,7 +2132,6 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             if match:
                 agent_id = match.group(1)
            
-                # Exclude common generic words
                 excluded_words = ['the', 'it', 'that', 'this', 'what', 'how', 'is', 'agent', 'agents', 'are', 'all', 'my', 'your', 'their', 'a', 'an']
                 if agent_id not in excluded_words:
         

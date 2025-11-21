@@ -29,17 +29,29 @@ class TestSearchGitHubForAgent:
             }
         ]
         
-        with patch('requests.get', return_value=mock_response):
+        mock_detect = {
+            'method': 'pip',
+            'pypi_package': 'volttron-listener',
+            'vctl_compatible': True,
+            'setup_py': True,
+            'pyproject_toml': False,
+            'details': ['Found setup.py', 'README mentions pip install']
+        }
+        
+        with patch('requests.get', return_value=mock_response), \
+             patch('chat_app.volttron_commands.detect_installation_method', return_value=mock_detect):
             result = search_github_for_agent('listener')
         
         assert 'Status: Match found' in result
         assert 'volttron-listener' in result
         assert 'https://github.com/eclipse-volttron/volttron-listener' in result
-        assert 'Question: Is this the agent you want to install?' in result
+        assert 'Do you want to install this agent?' in result
         assert 'yes/no' in result
         # Verify pagination info is included
         assert 'Pages scanned:' in result
         assert 'Repositories scanned:' in result
+        # Verify installation method is included
+        assert 'Installation method:' in result
         # Verify no hardcoded emoji or marketing language
         assert '🎉' not in result
         assert '✨' not in result
@@ -344,13 +356,9 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/volttron-listener.git')
         
-        assert 'Agent installation from GitHub completed.' in result
-        assert 'Repository: https://github.com/eclipse-volttron/volttron-listener.git' in result
-        assert 'Repository name: volttron-listener' in result
-        assert 'Return code: 0' in result
-        assert 'Success: True' in result
-        assert 'stdout:' in result
-        # Verify no hardcoded emoji
+        assert '✅' in result
+        assert 'volttron-listener installed from GitHub successfully' in result
+        # Verify no hardcoded emoji (other than success indicator)
         assert '🎉' not in result
         assert '✨' not in result
     
@@ -366,11 +374,9 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/bad-agent.git')
         
-        assert 'Agent installation from GitHub completed.' in result
-        assert 'Return code: 1' in result
-        assert 'Success: False' in result
-        assert 'stderr:' in result
-        assert 'package not found' in result
+        assert '❌' in result
+        assert 'bad-agent installation failed' in result
+        assert 'package not found' in result.lower()
     
     def test_vctl_not_found(self):
         """Test handling when vctl command is not found."""
@@ -387,7 +393,8 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/test.git')
         
-        assert 'Status: Error' in result or 'Status: Timeout' in result
+        assert '❌' in result
+        assert 'test.git installation error' in result or 'test installation error' in result
     
     def test_extracts_repo_name_correctly(self):
         """Test that repository name is extracted correctly from URL."""
@@ -402,7 +409,8 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/my-agent.git')
         
-        assert 'Repository name: my-agent' in result
+        assert '✅' in result
+        assert 'my-agent installed from GitHub successfully' in result
         
         # Test without .git extension
         with patch('subprocess.run', return_value=mock_result):
@@ -410,7 +418,8 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/another-agent')
         
-        assert 'Repository name: another-agent' in result
+        assert '✅' in result
+        assert 'another-agent installed from GitHub successfully' in result
     
     def test_returns_structured_data(self):
         """Test that response is structured data without hardcoded responses."""
@@ -424,18 +433,11 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/test.git')
         
-        # Check for structured data format
-        assert 'Agent installation from GitHub completed.' in result
-        assert 'Repository:' in result
-        assert 'Repository name:' in result
-        assert 'Command:' in result
-        assert 'Return code:' in result
-        assert 'Success:' in result
-        assert 'VOLTTRON_HOME:' in result
-        assert 'stdout:' in result
-        assert 'stderr:' in result
+        # Check for concise success message
+        assert '✅' in result
+        assert 'test installed from GitHub successfully' in result
         
-        # Verify NO hardcoded emoji or marketing language
+        # Verify NO hardcoded marketing language
         assert '🎉' not in result
         assert 'Congratulations' not in result
         assert 'Great job' not in result

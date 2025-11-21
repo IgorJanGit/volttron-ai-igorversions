@@ -48,25 +48,15 @@ class TestPipInstallPackageRefactored:
         
         result = pip_install_package("test-package")
         
-        # Should NOT contain emoji
-        assert "🎉" not in result
-        assert "✅" not in result
-        assert "❌" not in result
+        # Should contain success indicator with version
+        assert "✅" in result
+        assert "test-package" in result
+        assert "installed successfully" in result
         
-        # Should NOT contain conversational phrases
-        assert "What would you like to do next?" not in result
-        assert "ready to use" not in result.lower()
-        
-        # SHOULD contain structured data
-        assert "Package: test-package" in result
-        assert "Installation return code: 0" in result
-        assert "Installation success: True" in result
-        assert "Verification return code: 0" in result
-        assert "Verification success: True" in result
-        
-        # Should contain raw output for AI to interpret
-        assert "Successfully installed test-package-1.0.0" in result
-        assert "Name: test-package" in result
+        # Should NOT contain old verbose format
+        assert "Installation return code:" not in result
+        assert "Installation output:" not in result
+        assert "Verification output:" not in result
         
     @patch('chat_app.volttron_commands.subprocess.run')
     @patch('chat_app.volttron_commands.find_pip_command')
@@ -90,14 +80,14 @@ class TestPipInstallPackageRefactored:
         
         result = pip_install_package("test-package")
         
-        # Should NOT contain emoji or suggestions
-        assert "✅" not in result
-        assert "Upgrade" not in result or "upgrade" not in result.lower()
-        assert "What would you like to do next?" not in result
+        # Should contain success message (already installed is still success)
+        assert "✅" in result
+        assert "test-package" in result
+        assert "installed successfully" in result
         
-        # SHOULD contain the raw "already satisfied" message
-        assert "Requirement already satisfied" in result
-        assert "Installation return code: 0" in result
+        # Should NOT contain old verbose format
+        assert "Installation return code:" not in result
+        assert "Requirement already satisfied" not in result
         
     @patch('chat_app.volttron_commands.subprocess.run')
     @patch('chat_app.volttron_commands.find_pip_command')
@@ -121,16 +111,14 @@ class TestPipInstallPackageRefactored:
         
         result = pip_install_package("nonexistent-package")
         
-        # Should NOT contain emoji or formatted suggestions
-        assert "❌" not in result
-        assert "💡" not in result
-        assert "Suggestions:" not in result
-        assert "Would you like me to help" not in result
+        # Should contain failure indicator with error message
+        assert "❌" in result
+        assert "nonexistent-package" in result
+        assert "installation failed" in result
         
-        # SHOULD contain structured error information
-        assert "Installation return code: 1" in result
-        assert "Installation success: False" in result
-        assert "Could not find a version" in result
+        # Should NOT contain old verbose format
+        assert "Installation return code:" not in result
+        assert "Installation output:" not in result
         
     @patch('chat_app.volttron_commands.subprocess.run')
     @patch('chat_app.volttron_commands.find_pip_command')
@@ -141,13 +129,10 @@ class TestPipInstallPackageRefactored:
         
         result = pip_install_package("large-package")
         
-        # Should NOT contain emoji
-        assert "⏱️" not in result
-        assert "❌" not in result
-        
-        # SHOULD contain timeout information
-        assert "Timeout" in result or "timeout" in result
+        # Should contain timeout indicator
+        assert "⏱️" in result
         assert "large-package" in result
+        assert "timeout" in result.lower()
         
     @patch('chat_app.volttron_commands.subprocess.run')
     @patch('chat_app.volttron_commands.find_pip_command')
@@ -242,14 +227,14 @@ class TestVctlInstallAgentRefactored:
         
         result = vctl_install_agent("listener")
         
-        # Should NOT contain emoji or suggestions
-        assert "🎉" not in result
-        assert "✅" not in result
+        # Concise format now includes success indicator
+        assert '✅' in result
+        assert 'installed' in result
+        assert 'successfully' in result
         assert "What would you like to do" not in result
         
-        # SHOULD contain structured installation data
-        assert "listener" in result
-        assert "Agent installed successfully" in result
+        # SHOULD contain package name
+        assert "volttron-listener" in result or "listener" in result
 
 
 class TestNoHardcodedStringsInResponses:
