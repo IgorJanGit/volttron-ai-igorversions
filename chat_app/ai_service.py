@@ -23,18 +23,8 @@ from .volttron_commands import (
     show_fake_driver_logs, check_fake_driver_status, watch_fake_driver_logs, setup_fake_driver_complete,
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
     smart_install_package, search_github_for_agent, install_agent_from_github,
-    list_volttron_packages, list_running_agents, install_from_github_smart, list_all_installations
-)
-from .sqlite_historian import (
-    install_sqlite_historian,
-    create_sqlite_historian_config,
-    check_sqlite_historian_status
-)
-from .postgresql_historian import (
-    install_postgresql_historian,
-    create_postgresql_historian_config,
-    check_postgresql_historian_status,
-    get_postgresql_setup_instructions
+    list_volttron_packages, list_running_agents, install_from_github_smart, list_all_installations,
+    list_repository_packages
 )
 
 try:
@@ -335,58 +325,14 @@ if agent:
         return list_all_installations()
 
     @agent.tool_plain
-    def install_sqlite_historian_tool(config_path: str = None) -> str:
-        """Install and configure VOLTTRON SQLite historian agent.
+    def list_repository_packages_tool() -> str:
+        """List all VOLTTRON packages in the current repository's virtual environment.
         
-        Installs the volttron-sqlite-historian package which stores time-series data
-        in a SQLite database. Creates default configuration if none provided.
-        
-        Args:
-            config_path: Optional path to custom configuration file
+        Shows packages installed via pip in THIS workspace (not system VOLTTRON).
+        Useful for tracking what's installed during development when installing many packages.
+        Includes version numbers and separates VOLTTRON packages from related tools.
         """
-        return install_sqlite_historian(config_path)
-
-    @agent.tool_plain
-    def check_sqlite_historian_status_tool() -> str:
-        """Check if SQLite historian is installed and running.
-        
-        Returns status information about the SQLite historian agent.
-        """
-        return check_sqlite_historian_status()
-
-    @agent.tool_plain
-    def install_postgresql_historian_tool(config_path: str = None, dbname: str = "volttron",
-                                          host: str = None, port: int = 5432,
-                                          user: str = None, password: str = None,
-                                          timescale: bool = False) -> str:
-        """Install and configure VOLTTRON PostgreSQL historian agent.
-        
-        Args:
-            config_path: Optional path to custom configuration file
-            dbname: Database name (default: "volttron")
-            host: Database host (if None, uses Unix socket)
-            port: Database port (default: 5432)
-            user: Database user
-            password: Database password
-            timescale: Enable TimescaleDB support (default: False)
-        """
-        return install_postgresql_historian(config_path, dbname, host, port, user, password, timescale)
-
-    @agent.tool_plain
-    def check_postgresql_historian_status_tool() -> str:
-        """Check if PostgreSQL historian is installed and running.
-        
-        Returns status information about the PostgreSQL historian agent.
-        """
-        return check_postgresql_historian_status()
-
-    @agent.tool_plain
-    def get_postgresql_setup_instructions_tool() -> str:
-        """Get detailed setup instructions for PostgreSQL historian.
-        
-        Returns SQL commands and configuration steps for database setup.
-        """
-        return get_postgresql_setup_instructions()
+        return list_repository_packages()
 
     @agent.tool_plain
     def run_vctl_help_tool(subcommand: str = None) -> str:
@@ -895,93 +841,11 @@ class AIService:
                     }
                 }
             },
-            "install_sqlite_historian": {
-                "function": install_sqlite_historian,
+            "list_repository_packages": {
+                "function": list_repository_packages,
                 "schema": {
-                    "name": "install_sqlite_historian",
-                    "description": "Install and configure VOLTTRON SQLite historian agent for storing time-series data in a SQLite database",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "config_path": {
-                                "type": "string",
-                                "description": "Optional path to custom configuration file. If not provided, creates default config"
-                            }
-                        },
-                        "required": []
-                    }
-                }
-            },
-            "check_sqlite_historian_status": {
-                "function": check_sqlite_historian_status,
-                "schema": {
-                    "name": "check_sqlite_historian_status",
-                    "description": "Check if SQLite historian is installed and running",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            },
-            "install_postgresql_historian": {
-                "function": install_postgresql_historian,
-                "schema": {
-                    "name": "install_postgresql_historian",
-                    "description": "Install and configure VOLTTRON PostgreSQL historian agent for storing time-series data in a PostgreSQL database. Supports local Unix socket and remote connections, with optional TimescaleDB support.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "config_path": {
-                                "type": "string",
-                                "description": "Optional path to custom configuration file. If not provided, creates default config"
-                            },
-                            "dbname": {
-                                "type": "string",
-                                "description": "Database name. Default: 'volttron'"
-                            },
-                            "host": {
-                                "type": "string",
-                                "description": "Database host. If not provided, uses Unix socket for local connection"
-                            },
-                            "port": {
-                                "type": "integer",
-                                "description": "Database port. Default: 5432"
-                            },
-                            "user": {
-                                "type": "string",
-                                "description": "Database user. Required for remote connections"
-                            },
-                            "password": {
-                                "type": "string",
-                                "description": "Database password. Required for remote connections"
-                            },
-                            "timescale": {
-                                "type": "boolean",
-                                "description": "Enable TimescaleDB hypertable support. Default: false"
-                            }
-                        },
-                        "required": []
-                    }
-                }
-            },
-            "check_postgresql_historian_status": {
-                "function": check_postgresql_historian_status,
-                "schema": {
-                    "name": "check_postgresql_historian_status",
-                    "description": "Check if PostgreSQL historian is installed and running in VOLTTRON platform",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            },
-            "get_postgresql_setup_instructions": {
-                "function": get_postgresql_setup_instructions,
-                "schema": {
-                    "name": "get_postgresql_setup_instructions",
-                    "description": "Get detailed setup instructions and SQL commands for configuring PostgreSQL database for VOLTTRON historian. Includes table creation, user permissions, and optional TimescaleDB setup.",
+                    "name": "list_repository_packages",
+                    "description": "List all VOLTTRON packages installed in the current repository's virtual environment with version numbers. Shows what's in THIS workspace, not system VOLTTRON. Useful when installing many packages.",
                     "parameters": {
                         "type": "object",
                         "properties": {},

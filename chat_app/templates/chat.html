@@ -201,6 +201,11 @@
         const sendButton = document.getElementById('sendButton');
         const typingIndicator = document.getElementById('typingIndicator');
 
+        // Chat history for arrow key navigation
+        let chatHistory = [];
+        let historyIndex = -1;
+        let currentDraft = '';
+
         function addMessage(content, isUser = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
@@ -221,6 +226,11 @@
         async function sendMessage() {
             const message = messageInput.value.trim();
             if (!message) return;
+
+            // Add to history
+            chatHistory.push(message);
+            historyIndex = chatHistory.length;
+            currentDraft = '';
 
             // Add user message
             addMessage(message, true);
@@ -258,8 +268,40 @@
         }
 
         sendButton.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+        
+        messageInput.addEventListener('keydown', (e) => {
+            // Arrow Up - Previous message in history
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (chatHistory.length === 0) return;
+                
+                // Save current draft if at the end
+                if (historyIndex === chatHistory.length) {
+                    currentDraft = messageInput.value;
+                }
+                
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    messageInput.value = chatHistory[historyIndex];
+                }
+            }
+            
+            // Arrow Down - Next message in history
+            else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (chatHistory.length === 0) return;
+                
+                if (historyIndex < chatHistory.length - 1) {
+                    historyIndex++;
+                    messageInput.value = chatHistory[historyIndex];
+                } else if (historyIndex === chatHistory.length - 1) {
+                    historyIndex = chatHistory.length;
+                    messageInput.value = currentDraft;
+                }
+            }
+            
+            // Enter - Send message
+            else if (e.key === 'Enter') {
                 sendMessage();
             }
         });

@@ -5,17 +5,6 @@ import shutil
 import requests
 import json
 from pathlib import Path
-from chat_app.sqlite_historian import (
-    install_sqlite_historian,
-    create_sqlite_historian_config,
-    check_sqlite_historian_status
-)
-from chat_app.postgresql_historian import (
-    install_postgresql_historian,
-    create_postgresql_historian_config,
-    check_postgresql_historian_status,
-    get_postgresql_setup_instructions
-)
 
 
 def get_active_virtualenv():
@@ -2900,25 +2889,39 @@ def extract_installation_commands(readme_text, repo_url, repo_name):
     code_blocks = re.findall(r'```(?:bash|shell|sh)?\n(.*?)```', install_section, re.DOTALL)
     
     if code_blocks:
-        # Analyze first code block for installation pattern
-        first_block = code_blocks[0].strip()
-        lines = [l.strip() for l in first_block.split('\n') if l.strip() and not l.strip().startswith('#')]
+        # Analyze code blocks for installation pattern
+        all_commands = []
         
-        # Remove comment lines and empty lines
-        clean_lines = [l for l in lines if l and not l.startswith('#')]
+        # Common shell commands that indicate this is a command line, not prose
+        command_indicators = ['pip', 'poetry', 'npm', 'git', 'python', 'sudo', 'apt', 'yum', 
+                             'brew', 'cargo', 'go', 'make', 'cmake', 'curl', 'wget', 'docker']
         
-        if not clean_lines:
+        for block in code_blocks:
+            lines = [l.strip() for l in block.split('\n')]
+            # Filter valid shell commands (skip comments, empty lines, and plain text)
+            for line in lines:
+                line = line.strip()
+                # Skip empty, comments, or lines that look like prose
+                if not line or line.startswith('#'):
+                    continue
+                # Skip lines that start with uppercase (likely prose, not commands)
+                # UNLESS they contain known command keywords
+                if line and line[0].isupper() and not any(cmd in line.lower() for cmd in command_indicators):
+                    continue
+                all_commands.append(line)
+        
+        if not all_commands:
             return {'method': 'unknown', 'instructions': 'No installation commands found'}
         
         # Check for git clone in commands - if present, we need to clone first
-        has_clone = any('git clone' in l.lower() for l in clean_lines)
+        has_clone = any('git clone' in l.lower() for l in all_commands)
         
         # Separate git clone from other commands
-        clone_cmds = [l for l in clean_lines if 'git clone' in l.lower()]
-        other_cmds = [l for l in clean_lines if 'git clone' not in l.lower() and 'cd ' not in l.lower()]
+        other_cmds = [l for l in all_commands if 'git clone' not in l.lower() and 'cd ' not in l.lower() and 'export ' not in l.lower()]
         
-        # If commands reference current directory (., setup.py, etc.), need to clone first
-        needs_clone = any(token in ' '.join(clean_lines).lower() for token in ['pip install .', 'pip install -e', 'python setup.py', 'poetry install'])
+        # Patterns that indicate we need to clone first (installing from current directory)
+        local_install_patterns = ['install .', 'install -e', 'setup.py', ' install', 'build']
+        needs_clone = any(pattern in ' '.join(all_commands).lower() for pattern in local_install_patterns)
         
         if needs_clone or (has_clone and other_cmds):
             # Clone needed, then run commands in that directory
@@ -2928,7 +2931,7 @@ def extract_installation_commands(readme_text, repo_url, repo_name):
             return {'method': 'direct_commands', 'commands': other_cmds}
         else:
             # Only clone commands, no installation
-            return {'method': 'manual', 'instructions': first_block}
+            return {'method': 'manual', 'instructions': '\n'.join(all_commands)}
     
     # Return manual instructions if found code blocks
     if code_blocks:
@@ -3556,14 +3559,81 @@ def list_running_agents():
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-def smart_install_package(package_name, user_message=""):
-    """Intelligently install a package using pip or vctl based on package type.
+
+def list_repository_packages():
+    """List all VOLTTRON packages installed in the current repository's virtual environment.
     
-    Rules:
-    - Fake driver library (volttron-lib-fake-driver) → MUST use pip
-    - Python libraries (volttron-*) → Use pip
-    - VOLTTRON agents (listener, platform driver, historian, etc.) → Use vctl install
-    - Special repos (ansible, copier, etc.) → Search GitHub and analyze
+    This shows what's installed via pip in THIS workspace, not the system VOLTTRON.
+    Useful when you're installing many packages and want to track what's in your dev environment.
+    
+    Returns:
+        str: List of installed packages with versions
+    """
+    try:
+        pip_path = find_pip_command()
+        if not pip_path:
+            return "❌ Pip not found in current environment"
+        
+        # Get all installed packages
+        result = subprocess.run(
+            [pip_path, 'list', '--format=columns'],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        
+        if result.returncode != 0:
+            return f"❌ Failed to list packages: {result.stderr}"
+        
+        # Filter for volttron-related packages
+        volttron_packages = []
+        other_packages = []
+        
+        for line in result.stdout.split('\n'):
+            line = line.strip()
+            if not line or line.startswith('Package') or line.startswith('---'):
+                continue
+            
+            parts = line.split()
+            if len(parts) >= 2:
+                pkg_name = parts[0]
+                version = parts[1]
+                
+                if 'volttron' in pkg_name.lower():
+                    volttron_packages.append(f"{pkg_name} ({version})")
+                elif pkg_name.lower() in ['ansible', 'poetry', 'pydantic-ai', 'openai']:
+                    other_packages.append(f"{pkg_name} ({version})")
+        
+        result_lines = ["📦 **Repository Packages:**\n"]
+        
+        if volttron_packages:
+            result_lines.append(f"VOLTTRON packages ({len(volttron_packages)}):")
+            for pkg in sorted(volttron_packages):
+                result_lines.append(f"  • {pkg}")
+        
+        if other_packages:
+            result_lines.append(f"\nRelated tools:")
+            for pkg in sorted(other_packages):
+                result_lines.append(f"  • {pkg}")
+        
+        if not volttron_packages and not other_packages:
+            return "No VOLTTRON packages found in current environment"
+        
+        return "\n".join(result_lines)
+        
+    except subprocess.TimeoutExpired:
+        return "⏱️ Timeout listing packages"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+
+def smart_install_package(package_name, user_message=""):
+    """Intelligently install a package by searching GitHub and reading its README.
+    
+    Generic approach:
+    1. If it looks like a PyPI package name (volttron-*), try pip install
+    2. Otherwise, search GitHub for the repository
+    3. Use install_from_github_smart to read README and follow instructions
     
     Args:
         package_name: Name of package/agent to install
@@ -3573,112 +3643,29 @@ def smart_install_package(package_name, user_message=""):
         str: Installation result message
     """
     package_lower = package_name.lower().strip()
-    message_lower = user_message.lower()
     
-    # Check for special non-pip repositories that need GitHub analysis
-    special_repos = [
-        'ansible', 'copier', 'github.io', 'template', 
-        'ilc', 'bacnet-scan-tool', 'zmq', 'auth'
-    ]
-    
-    # If it's a known special repo, search GitHub and use smart install
-    for special in special_repos:
-        if special in package_lower:
-            # Search for it on GitHub first
-            search_result = search_github_for_agent(package_name)
-            
-            # If we found exactly one match, use smart install
-            if 'https://github.com/eclipse-volttron/' in search_result:
-                import re
-                urls = re.findall(r'https://github\.com/eclipse-volttron/[^\s\)]+', search_result)
-                if urls:
-                    # Use the smart installer to analyze and install
-                    return install_from_github_smart(urls[0])
-            
-            return search_result  # Return search results if multiple or none found
-    
-    if 'fake' in package_lower and 'driver' in package_lower:
-        if 'lib' not in package_lower and 'volttron-lib' not in package_lower:
-            package_name = 'volttron-lib-fake-driver'
-        return pip_install_package(package_name)
-    
+    # If it starts with volttron-, try pip install directly (might be on PyPI)
     if package_lower.startswith('volttron-'):
-        return pip_install_package(package_name)
+        result = pip_install_package(package_name)
+        # If pip install succeeded, return
+        if '✅' in result:
+            return result
+        # If it failed, fall through to GitHub search
     
-    vctl_agents = {
-        'listener': vctl_install_listener_agent,
-        'listeneragent': vctl_install_listener_agent,
-        'volttron-listener': vctl_install_listener_agent,
-        
-        'platform-driver': vctl_install_platform_driver,
-        'platformdriver': vctl_install_platform_driver,
-        'platform.driver': vctl_install_platform_driver,
-        'volttron-platform-driver': vctl_install_platform_driver,
-        
-        'historian': vctl_install_agent,
-        'sqlhistorian': vctl_install_agent,
-        'sql-historian': vctl_install_agent,
-        'postgresql-historian': vctl_install_agent,
-        'sqlite-historian': vctl_install_agent,
-        'volttron-postgresql-historian': vctl_install_agent,
-        'volttron-sqlite-historian': vctl_install_agent,
-        
-        'actuator': vctl_install_agent,
-        'volttron-actuator': vctl_install_agent,
-        
-        'weather': vctl_install_agent,
-        'weatheragent': vctl_install_agent,
-        
-        'ieee2030': vctl_install_agent,
-        'ieee-2030': vctl_install_agent,
-        
-        'bacnet-proxy': vctl_install_agent,
-        'bacnetproxy': vctl_install_agent,
-        'modbus-tk': vctl_install_agent,
-        'modbus': vctl_install_agent,
-        'dnp3': vctl_install_agent,
-        'mqtt-proxy': vctl_install_agent,
-        'nats-proxy': vctl_install_agent,
-        
-        'ilc': vctl_install_agent,
-        'volttron-ilc': vctl_install_agent,
-        
-        'topic-watcher': vctl_install_agent,
-        'topicwatcher': vctl_install_agent,
-        'volttron-topic-watcher': vctl_install_agent,
-        
-        'threshold-detection': vctl_install_agent,
-        'thresholddetection': vctl_install_agent,
-        'volttron-threshold-detection': vctl_install_agent,
-        
-        'platform-lookup': vctl_install_agent,
-        'platformlookup': vctl_install_agent,
-    }
+    # Search GitHub for the package
+    search_result = search_github_for_agent(package_name)
     
-    package_normalized = package_lower.replace('_', '-').replace('.', '-')
-    for agent_name, install_func in vctl_agents.items():
-        if agent_name in package_normalized or package_normalized in agent_name:
-            if install_func == vctl_install_agent:
-                return vctl_install_agent(package_name)
-            else:
-                return install_func()
+    # If we found a GitHub URL, use smart install
+    if 'https://github.com/' in search_result:
+        import re
+        urls = re.findall(r'https://github\.com/[\w\-]+/[\w\-]+', search_result)
+        if urls:
+            # Use the smart installer to analyze and install
+            return install_from_github_smart(urls[0])
     
-    if 'agent' in message_lower:
-        return vctl_install_agent(package_name)
-    
-    pip_result = pip_install_package(package_name)
-    
-    if '❌' in pip_result or 'Failed' in pip_result or 'not found' in pip_result.lower():
-        return f"""{pip_result}
+    # If no GitHub repo found, return search results
+    return search_result
 
-💡 **Alternative:** If this is a VOLTTRON agent (not a library), try:
-   `vctl install {package_name}`
-
-**Need help?** Tell me more about what you're trying to install:
-• Python library → I'll use `pip install`
-• VOLTTRON agent → I'll use `vctl install`"""
-    
-    return pip_result
 
 def install_fake_driver_library():
     """Install the volttron-lib-fake-driver package for testing and development.
