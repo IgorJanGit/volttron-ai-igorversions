@@ -8,10 +8,70 @@ and intelligently pick the correct command based on user intent.
 import requests
 import json
 import time
+import subprocess
+import os
+import signal
 from typing import List, Dict
+import pytest
 
 # Chat API endpoint
 CHAT_URL = "http://127.0.0.1:8000/chat"
+
+# Global server process
+_server_process = None
+
+@pytest.fixture(scope="session", autouse=True)
+def chat_server():
+    """Start the chat server before tests and stop it after."""
+    global _server_process
+    
+    # Check if server is already running
+    try:
+        response = requests.get("http://127.0.0.1:8000", timeout=2)
+        if response.status_code == 200:
+            print("\n✓ Chat server already running")
+            yield
+            return
+    except:
+        pass
+    
+    # Start the server
+    print("\nStarting chat server...")
+    workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    _server_process = subprocess.Popen(
+        [f"{workspace_dir}/env/bin/python", "-m", "chat_app"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=workspace_dir
+    )
+    
+    # Wait for server to be ready
+    max_wait = 15
+    for i in range(max_wait):
+        try:
+            response = requests.get("http://127.0.0.1:8000", timeout=1)
+            if response.status_code == 200:
+                print(f"✓ Chat server started (took {i+1}s)\n")
+                break
+        except:
+            time.sleep(1)
+    else:
+        if _server_process:
+            _server_process.kill()
+        pytest.fail("Chat server failed to start within 15 seconds")
+    
+    yield
+    
+    # Cleanup - stop the server
+    if _server_process:
+        print("\n\nStopping chat server...")
+        _server_process.terminate()
+        try:
+            _server_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _server_process.kill()
+        print("✓ Chat server stopped")
 
 def send_message(message: str, verbose: bool = True) -> Dict:
     """Send a message to the chat API and return the response."""
@@ -172,7 +232,9 @@ def test_intelligent_discovery():
     print(f"Success Rate: {results['passed']/len(test_cases)*100:.1f}%")
     print("=" * 80)
     
-    return results
+    # Use assertions instead of returning results
+    assert results['passed'] > 0, "No tests passed"
+    # Don't fail on warnings, just ensure some tests passed
 
 def test_direct_vctl_help():
     """Test direct access to vctl help functionality."""
