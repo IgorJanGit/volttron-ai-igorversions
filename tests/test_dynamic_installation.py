@@ -81,11 +81,7 @@ npm install
 ```
 """
         result = extract_installation_commands(readme, "https://github.com/test/repo", "repo")
-        
-        # Should find installation method
         assert result['method'] != 'unknown'
-        
-        # Should have either package name or commands
         assert 'package' in result or 'commands' in result
     
     def test_detects_ansible_galaxy_install(self):
@@ -99,7 +95,7 @@ ansible-galaxy install volttron.ansible
 """
         result = extract_installation_commands(readme, "https://github.com/test/repo", "repo")
         
-        # Function may detect as clone_and_install or direct_commands
+
         assert result['method'] in ['clone_and_install', 'direct_commands']
         assert any('ansible-galaxy' in cmd for cmd in result['commands'])
     
@@ -120,7 +116,7 @@ pip install my-package
 """
         result = extract_installation_commands(readme, "https://github.com/test/repo", "repo")
         
-        # Should find pip install
+
         assert result['method'] in ['pip_from_pypi', 'direct_commands']
     
     def test_handles_no_installation_section(self):
@@ -146,7 +142,7 @@ pip install -e .
 """
         result = extract_installation_commands(readme, "https://github.com/test/repo", "repo")
         
-        # May detect as pip_from_pypi or clone_and_install
+
         assert result['method'] in ['clone_and_install', 'pip_from_pypi', 'direct_commands']
         assert 'commands' in result or 'package' in result
 
@@ -173,9 +169,7 @@ class TestExecuteDirectCommands(unittest.TestCase):
     @patch('chat_app.volttron_commands.shutil.which')
     def test_auto_installs_missing_tools(self, mock_which, mock_run):
         """Test auto-installation of missing tools like ansible."""
-        # First call: check for ansible-galaxy (not found)
-        # Second call: install ansible
-        # Third call: run the actual command
+
         mock_which.side_effect = [None, '/usr/bin/pip', '/usr/bin/ansible-galaxy']
         
         install_result = Mock()
@@ -188,7 +182,7 @@ class TestExecuteDirectCommands(unittest.TestCase):
         
         result = execute_direct_commands(['ansible-galaxy install volttron.ansible'], 'test-repo')
         
-        # Should have tried to install ansible first
+
         assert mock_run.call_count >= 1
         assert '✅' in result or 'installed' in result.lower()
     
@@ -232,12 +226,8 @@ class TestExecuteCloneAndInstall(unittest.TestCase):
         """Test cloning repository and installing."""
         mock_tempdir.return_value = '/tmp/test-repo'
         mock_pip.return_value = '/usr/bin/pip'
-        
-        # Mock git clone
         clone_result = Mock()
         clone_result.returncode = 0
-        
-        # Mock pip install
         install_result = Mock()
         install_result.returncode = 0
         
@@ -309,18 +299,13 @@ class TestInstallFromGithubSmart(unittest.TestCase):
     @patch('chat_app.volttron_commands.pip_install_package')
     def test_uses_pip_when_package_detected(self, mock_pip, mock_detect, mock_get):
         """Test that it uses pip when PyPI package is detected."""
-        # Mock detection
         mock_detect.return_value = {'pypi_package': 'volttron-listener'}
-        
-        # Mock README fetch
         readme_response = Mock()
         readme_response.status_code = 200
         readme_response.json.return_value = {
             'content': 'IyBNeSBQYWNrYWdl'  # base64 encoded
         }
         mock_get.return_value = readme_response
-        
-        # Mock pip install
         mock_pip.return_value = "✅ volttron-listener v1.0.0 installed successfully"
         
         result = install_from_github_smart('https://github.com/eclipse-volttron/volttron-listener')
@@ -363,7 +348,6 @@ class TestInstallFromGithubSmart(unittest.TestCase):
         result = install_from_github_smart('https://not-github.com/test/repo')
         
         assert '❌' in result
-        # Should contain error message about README or fetch
         assert 'README' in result or 'fetch' in result
 
 
@@ -383,7 +367,6 @@ pip install optional
         
         if 'commands' in result:
             commands = result['commands']
-            # Check that order is preserved (if multiple commands)
             if len(commands) >= 2:
                 assert commands[0] != commands[1]
     
@@ -398,8 +381,6 @@ pip install optional
             mock_run.return_value = mock_result
             
             result = execute_direct_commands(['pip install test'], 'test-repo')
-            
-            # Should be concise
             lines = result.split('\n')
             assert len(lines) < 5  # Not verbose
             assert '✅' in result  # Has status emoji

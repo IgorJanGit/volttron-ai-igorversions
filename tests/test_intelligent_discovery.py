@@ -14,10 +14,10 @@ import signal
 from typing import List, Dict
 import pytest
 
-# Chat API endpoint
+
 CHAT_URL = "http://127.0.0.1:8000/chat"
 
-# Global server process
+
 _server_process = None
 
 @pytest.fixture(scope="session", autouse=True)
@@ -25,7 +25,7 @@ def chat_server():
     """Start the chat server before tests and stop it after."""
     global _server_process
     
-    # Check if server is already running
+
     try:
         response = requests.get("http://127.0.0.1:8000", timeout=2)
         if response.status_code == 200:
@@ -35,7 +35,7 @@ def chat_server():
     except:
         pass
     
-    # Start the server
+
     print("\nStarting chat server...")
     workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
@@ -46,7 +46,7 @@ def chat_server():
         cwd=workspace_dir
     )
     
-    # Wait for server to be ready
+
     max_wait = 15
     for i in range(max_wait):
         try:
@@ -63,7 +63,7 @@ def chat_server():
     
     yield
     
-    # Cleanup - stop the server
+
     if _server_process:
         print("\n\nStopping chat server...")
         _server_process.terminate()
@@ -106,8 +106,6 @@ def test_intelligent_discovery():
     print("3. Intelligently map user intent to the correct vctl command")
     print("4. Execute the discovered command")
     print("\n" + "="*80 + "\n")
-    
-    # Test cases that should trigger intelligent discovery
     test_cases = [
         {
             "name": "Check agent health",
@@ -165,44 +163,43 @@ def test_intelligent_discovery():
         print(f"Expected command: {test.get('expected_command', 'N/A')}")
         print("-" * 80)
         
-        # Send the message
+ 
         response = send_message(test["message"], verbose=False)
         response_text = response.get("response", "").lower()
         
-        # Check if discovery was triggered
+  
         discovery_triggered = (
             "vctl --help" in response_text or
             "help_consulted" in response_text or
             "discovered" in response_text or
             "found command" in response_text
         )
-        
-        # Check if expected keywords are in response
+     
         keywords_found = all(
             keyword.lower() in response_text 
             for keyword in test.get("expected_keywords", [])
         )
         
-        # Check if the command was executed
+ 
         command_executed = (
             "✅" in response_text or
             "success" in response_text or
             any(kw in response_text for kw in ["status", "tag", "peer", "auth", "stat", "health"])
         )
         
-        # Determine if test passed
+      
         test_passed = True
         failure_reasons = []
         
         if test.get("should_discover") and not discovery_triggered:
-            # This is okay - direct command matching might have worked
+
             pass
         
         if not command_executed:
             test_passed = False
             failure_reasons.append("Command was not executed")
         
-        # Display result
+
         if test_passed:
             print(f"✅ PASSED")
             results["passed"] += 1
@@ -221,10 +218,10 @@ def test_intelligent_discovery():
             "response_length": len(response_text)
         })
         
-        # Wait between tests
+        
         time.sleep(1)
     
-    # Print summary
+
     print("\n" + "SUMMARY".center(80, "="))
     print(f"Total Tests: {len(test_cases)}")
     print(f"✅ Passed: {results['passed']}")
@@ -232,9 +229,9 @@ def test_intelligent_discovery():
     print(f"Success Rate: {results['passed']/len(test_cases)*100:.1f}%")
     print("=" * 80)
     
-    # Use assertions instead of returning results
+
     assert results['passed'] > 0, "No tests passed"
-    # Don't fail on warnings, just ensure some tests passed
+ 
 
 def test_direct_vctl_help():
     """Test direct access to vctl help functionality."""
@@ -252,7 +249,6 @@ def test_direct_vctl_help():
         response = send_message(message, verbose=False)
         response_text = response.get("response", "")
         
-        # Check if help output is shown
         has_help = any(keyword in response_text.lower() for keyword in [
             "usage:", "commands:", "vctl", "help", "available"
         ])
@@ -269,13 +265,13 @@ def test_context_retention():
     """Test if AI retains context when discovering commands."""
     print("\n" + "🧪 TESTING CONTEXT RETENTION".center(80, "="))
     
-    # First message - ask about something that requires discovery
+
     print("\n" + "Step 1: Initial discovery request".center(80, "-"))
     response1 = send_message("check the health of all agents", verbose=True)
     
     time.sleep(2)
     
-    # Follow-up message that requires context from the first
+ 
     print("\n" + "Step 2: Follow-up requiring context".center(80, "-"))
     response2 = send_message("do it again", verbose=True)
     
@@ -290,12 +286,12 @@ if __name__ == "__main__":
     print("  • Maintain context across interactions")
     print("=" * 80)
     
-    # Wait for server to be ready
+
     print("\nWaiting for chat server to be ready...")
     time.sleep(3)
     
     try:
-        # Run test suites
+  
         print("\n📋 Test Suite 1: Intelligent Discovery")
         results = test_intelligent_discovery()
         

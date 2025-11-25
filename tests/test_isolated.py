@@ -24,8 +24,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.original_dir = os.getcwd()
         os.chdir(self.test_dir)
-        
-        # Mock environment to avoid external dependencies
         self.env_patcher = patch.dict(os.environ, {
             'OPENAI_API_KEY': 'test-api-key-for-testing'
         })
@@ -41,8 +39,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         """Test that AI service initializes correctly."""
         from chat_app.ai_service import AIService
         ai_service = AIService('gpt-4o-mini')
-        
-        # Test basic properties
         self.assertEqual(ai_service.model_name, 'gpt-4o-mini')
         self.assertIsInstance(ai_service.conversation_history, list)
         self.assertIsInstance(ai_service.function_tools, dict)
@@ -53,8 +49,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         """Test that function tools are registered correctly."""
         from chat_app.ai_service import AIService
         ai_service = AIService('gpt-4o-mini')
-        
-        # Check that expected function tools are registered
         expected_tools = [
             'start_volttron', 'stop_volttron', 'check_volttron_status',
             'vctl_status', 'vctl_install_listener_agent', 'vctl_uninstall_agent',
@@ -75,8 +69,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         
         self.assertIsInstance(schemas, list)
         self.assertEqual(len(schemas), len(ai_service.function_tools))
-        
-        # Check schema structure
         for schema in schemas:
             self.assertIn('name', schema)
             self.assertIn('description', schema)
@@ -97,8 +89,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         """Test contextual reversal detection logic."""
         from chat_app.ai_service import AIService
         ai_service = AIService('gpt-4o-mini')
-        
-        # Test reversal detection with previous action
         ai_service.last_action = "install_agent"
         ai_service.last_action_details = {"agent_type": "listener"}
         
@@ -106,8 +96,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         self.assertTrue(is_reversal)
         self.assertIn("uninstall the listener agent", response)
         self.assertTrue(ai_service.awaiting_reversal_confirmation)
-        
-        # Test various reversal phrases
         reversal_phrases = [
             "i changed my mind", "undo that", "reverse it", "cancel that",
             "forget it", "actually no", "i made a mistake"
@@ -120,8 +108,6 @@ class TestAIServiceIsolated(unittest.TestCase):
             
             is_reversal, response = ai_service._detect_context_reversal(phrase)
             self.assertTrue(is_reversal, f"Failed to detect reversal for: {phrase}")
-        
-        # Test no reversal without previous action
         ai_service.last_action = None
         is_reversal, response = ai_service._detect_context_reversal("I changed my mind")
         self.assertFalse(is_reversal)
@@ -130,8 +116,6 @@ class TestAIServiceIsolated(unittest.TestCase):
     def test_conversation_history_management(self):
         """Test conversation history loading and saving."""
         from chat_app.ai_service import AIService
-        
-        # Create a test conversation file
         test_history = {
             'history': [
                 {'role': 'user', 'content': 'hello'},
@@ -143,21 +127,15 @@ class TestAIServiceIsolated(unittest.TestCase):
             json.dump(test_history, f)
             
         ai_service = AIService('gpt-4o-mini')
-        
-        # Test history loading
         self.assertEqual(len(ai_service.conversation_history), 2)
         self.assertEqual(ai_service.conversation_history[0]['role'], 'user')
         self.assertEqual(ai_service.conversation_history[1]['role'], 'assistant')
-        
-        # Test history saving
         ai_service.conversation_history = [
             {'role': 'user', 'content': 'test message'},
             {'role': 'assistant', 'content': 'test response'}
         ]
         
         ai_service._save_conversation_history()
-        
-        # Verify file was saved
         self.assertTrue(os.path.exists('conversation_history.json'))
         
         with open('conversation_history.json', 'r') as f:
@@ -169,8 +147,6 @@ class TestAIServiceIsolated(unittest.TestCase):
     def test_conversation_history_truncation(self):
         """Test that conversation history is properly truncated."""
         from chat_app.ai_service import AIService
-        
-        # Create a large conversation history
         large_history = {
             'history': [{'role': 'user', 'content': f'message {i}'} for i in range(50)]
         }
@@ -179,8 +155,6 @@ class TestAIServiceIsolated(unittest.TestCase):
             json.dump(large_history, f)
             
         ai_service = AIService('gpt-4o-mini')
-        
-        # Should only load last 20 messages
         self.assertEqual(len(ai_service.conversation_history), 20)
         self.assertEqual(ai_service.conversation_history[0]['content'], 'message 30')
         self.assertEqual(ai_service.conversation_history[-1]['content'], 'message 49')
@@ -188,27 +162,19 @@ class TestAIServiceIsolated(unittest.TestCase):
     def test_invalid_conversation_history_handling(self):
         """Test handling of invalid conversation history file."""
         from chat_app.ai_service import AIService
-        
-        # Create invalid JSON file
         with open('conversation_history.json', 'w') as f:
             f.write('invalid json content')
-            
-        # Should not crash and should initialize empty history
         ai_service = AIService('gpt-4o-mini')
         self.assertEqual(len(ai_service.conversation_history), 0)
     
     def test_model_info_retrieval(self):
         """Test model information retrieval."""
         from chat_app.ai_service import AIService
-        
-        # Test with simple model name
         ai_service = AIService('gpt-4o-mini')
         info = ai_service.get_model_info()
         
         self.assertEqual(info['model_name'], 'gpt-4o-mini')
         self.assertEqual(info['model_id'], 'gpt-4o-mini')
-        
-        # Test with provider prefix
         ai_service2 = AIService('openai:gpt-4o-mini')
         info2 = ai_service2.get_model_info()
         
@@ -221,8 +187,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         from chat_app.ai_service import AIService
         
         ai_service = AIService('gpt-4o-mini')
-        
-        # Test that non-commands return None
         result = ai_service._handle_direct_command('hello how are you?')
         self.assertIsNone(result)
         
@@ -242,11 +206,7 @@ class TestAIServiceIsolated(unittest.TestCase):
         
         ai_service = AIService('gpt-4o-mini')
         mock_uninstall.return_value = "Agent uninstalled successfully"
-        
-        # Call an uninstall function
         result = ai_service.call_function_tool('vctl_uninstall_agent', {'agent_uuid_or_tag': 'test-id'})
-        
-        # Check that action was tracked
         self.assertEqual(ai_service.last_action, 'uninstall_agent')
         self.assertIn('function', ai_service.last_action_details)
         self.assertIn('arguments', ai_service.last_action_details)
@@ -260,11 +220,7 @@ class TestAIServiceIsolated(unittest.TestCase):
         
         ai_service = AIService('gpt-4o-mini')
         mock_install.return_value = "Agent installed successfully"
-        
-        # Call an install function
         result = ai_service.call_function_tool('vctl_install_listener_agent', {})
-        
-        # Check that action was tracked
         self.assertEqual(ai_service.last_action, 'install_agent')
         self.assertIn('function', ai_service.last_action_details)
         self.assertEqual(ai_service.last_action_details['function'], 'vctl_install_listener_agent')
@@ -274,8 +230,6 @@ def run_isolated_tests():
     """Run isolated unit tests."""
     print("🧪 VOLTTRON AI Chat Service - Isolated Unit Tests")
     print("=" * 60)
-    
-    # Create test suite
     suite = unittest.TestLoader().loadTestsFromTestCase(TestAIServiceIsolated)
     
     # Run tests with verbose output

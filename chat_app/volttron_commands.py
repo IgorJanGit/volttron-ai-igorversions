@@ -5159,3 +5159,318 @@ Return code: {result.returncode}"""
         return "❌ Timeout while reading VOLTTRON logs"
     except Exception as e:
         return f"❌ Error reading logs: {str(e)}"
+
+
+def fetch_webpage_content(url: str) -> str:
+    """
+    Fetch and return the content of a webpage.
+    
+    Args:
+        url: The URL to fetch
+        
+    Returns:
+        str: Webpage content or error message
+    """
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        print(f"DEBUG: Fetching webpage: {url}")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+  
+        text = soup.get_text()
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = '\n'.join(chunk for chunk in chunks if chunk)
+        
+      
+        if 'github.com' in url and '/blob/' not in url:
+            try:
+                readme_div = soup.find('article', class_='markdown-body')
+                if readme_div:
+                    text = readme_div.get_text()
+            except:
+                pass
+        
+        return f"""📄 **Webpage Content Retrieved**
+URL: {url}
+Content length: {len(text)} characters
+
+{text[:5000]}{'...' if len(text) > 5000 else ''}"""
+        
+    except requests.RequestException as e:
+        return f"❌ Error fetching webpage: {str(e)}"
+    except Exception as e:
+        return f"❌ Error processing webpage: {str(e)}"
+
+
+def execute_system_command(command: str, require_sudo: bool = False) -> str:
+    """
+    Execute a system command safely.
+    
+    Args:
+        command: The command to execute
+        require_sudo: Whether the command requires sudo privileges
+        
+    Returns:
+        str: Command output or error message
+    """
+    try:
+        import subprocess
+        
+        print(f"DEBUG: Executing command: {command}")
+        
+        if require_sudo:
+            return f"⚠️ Command requires sudo privileges: {command}\n\nFor security reasons, please run this command manually:\n```bash\n{command}\n```"
+        
+       
+        safe_commands = [
+            'which', 'whereis', 'ls', 'cat', 'grep', 'find', 'pwd', 
+            'echo', 'uname', 'df', 'du', 'free', 'ps', 'top',
+            'psql', 'pg_isready', 'systemctl status', 'service'
+        ]
+        
+        cmd_parts = command.split()
+        if not cmd_parts:
+            return "❌ Empty command"
+        
+        base_cmd = cmd_parts[0]
+        is_safe = any(base_cmd == safe or base_cmd.endswith(safe) for safe in safe_commands)
+        
+        if not is_safe and not command.startswith(('vctl', 'volttron', 'pip')):
+            return f"⚠️ Command not in safe list: {command}\n\nFor security, please review and run manually if needed:\n```bash\n{command}\n```"
+        
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        output = result.stdout if result.stdout else result.stderr
+        
+        return f"""✅ **Command executed**
+Command: {command}
+Exit code: {result.returncode}
+
+Output:
+```
+{output}
+```"""
+        
+    except subprocess.TimeoutExpired:
+        return f"⏱️ Command timed out after 30 seconds: {command}"
+    except Exception as e:
+        return f"❌ Error executing command: {str(e)}"
+
+
+def setup_postgresql_database(db_name: str = "volttron", db_user: str = "volttron", db_password: str = "volttron") -> str:
+    """
+    Guide user through PostgreSQL database setup for VOLTTRON historian.
+    
+    Args:
+        db_name: Database name
+        db_user: Database user
+        db_password: Database password
+        
+    Returns:
+        str: Setup instructions and status
+    """
+    try:
+
+        result = subprocess.run(['which', 'psql'], capture_output=True, text=True)
+        postgres_installed = result.returncode == 0
+        
+        if not postgres_installed:
+            return f"""📋 **PostgreSQL Setup Required**
+
+PostgreSQL is not installed on this system.
+
+**Step 1: Install PostgreSQL**
+```bash
+sudo apt-get update
+sudo apt-get install postgresql postgresql-contrib
+```
+
+**Step 2: Create Database and User**
+```bash
+sudo -u postgres psql
+```
+
+Then run these SQL commands:
+```sql
+CREATE DATABASE {db_name};
+CREATE USER {db_user} WITH PASSWORD '{db_password}';
+GRANT ALL PRIVILEGES ON DATABASE {db_name} TO {db_user};
+\\q
+```
+
+**Step 3: Create Required Tables**
+```bash
+psql -U {db_user} -d {db_name} << EOF
+CREATE TABLE IF NOT EXISTS topics (
+    topic_id SERIAL PRIMARY KEY,
+    topic_name VARCHAR(512) UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS data (
+    ts TIMESTAMP NOT NULL,
+    topic_id INTEGER NOT NULL,
+    value_string TEXT,
+    UNIQUE(ts, topic_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_ts ON data (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_data_topic_id ON data (topic_id);
+EOF
+```
+
+After completing these steps, you can configure the PostgreSQL historian agent."""
+        
+        # Check if PostgreSQL service is running
+        service_result = subprocess.run(
+            ['systemctl', 'is-active', 'postgresql'],
+            capture_output=True,
+            text=True
+        )
+        
+        postgres_running = service_result.returncode == 0
+        
+        status = "✅ Running" if postgres_running else "⚠️ Not running"
+        
+        return f"""📊 **PostgreSQL Status Check**
+
+PostgreSQL is installed: ✅
+PostgreSQL service: {status}
+
+**Next Steps:**
+
+1. Ensure PostgreSQL is running:
+```bash
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+```
+
+2. Create database and user:
+```bash
+sudo -u postgres psql << EOF
+CREATE DATABASE {db_name};
+CREATE USER {db_user} WITH PASSWORD '{db_password}';
+GRANT ALL PRIVILEGES ON DATABASE {db_name} TO {db_user};
+\\q
+EOF
+```
+
+3. Test connection:
+```bash
+psql -U {db_user} -d {db_name} -h localhost
+```
+
+Would you like me to help configure the PostgreSQL historian agent configuration?"""
+        
+    except Exception as e:
+        return f"❌ Error checking PostgreSQL setup: {str(e)}"
+
+
+def create_historian_config(
+    historian_type: str = "postgresql",
+    db_config: dict = None
+) -> str:
+    """
+    Create a historian agent configuration file.
+    
+    Args:
+        historian_type: Type of historian (postgresql, sqlite, etc.)
+        db_config: Database configuration parameters
+        
+    Returns:
+        str: Configuration file content and instructions
+    """
+    try:
+        if db_config is None:
+            db_config = {
+                "dbname": "volttron",
+                "user": "volttron",
+                "password": "volttron",
+                "host": "localhost",
+                "port": 5432
+            }
+        
+        if historian_type == "postgresql":
+            config = {
+                "connection": {
+                    "type": "postgresql",
+                    "params": {
+                        "dbname": db_config.get("dbname", "volttron"),
+                        "host": db_config.get("host", "localhost"),
+                        "port": db_config.get("port", 5432),
+                        "user": db_config.get("user", "volttron"),
+                        "password": db_config.get("password", "volttron")
+                    }
+                },
+                "tables_def": {
+                    "table_prefix": "",
+                    "data_table": "data",
+                    "topics_table": "topics"
+                }
+            }
+        elif historian_type == "sqlite":
+            config = {
+                "connection": {
+                    "type": "sqlite",
+                    "params": {
+                        "database": db_config.get("database", "data/historian.sqlite")
+                    }
+                }
+            }
+        else:
+            return f"❌ Unsupported historian type: {historian_type}"
+        
+        config_json = json.dumps(config, indent=2)
+        
+        # Save to a file
+        config_dir = Path.home() / ".volttron" / "configs"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        config_file = config_dir / f"{historian_type}_historian_config.json"
+        with open(config_file, 'w') as f:
+            f.write(config_json)
+        
+        return f"""✅ **Historian Configuration Created**
+
+Type: {historian_type}
+File: {config_file}
+
+Configuration:
+```json
+{config_json}
+```
+
+**To install the historian agent:**
+```bash
+vctl install {historian_type}-historian --agent-config {config_file} --start
+```
+
+**To check status:**
+```bash
+vctl status
+```
+
+Configuration file saved to: {config_file}"""
+        
+    except Exception as e:
+        return f"❌ Error creating historian config: {str(e)}"

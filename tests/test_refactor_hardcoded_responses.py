@@ -47,13 +47,9 @@ class TestPipInstallPackageRefactored:
         mock_run.side_effect = [mock_install, mock_verify]
         
         result = pip_install_package("test-package")
-        
-        # Should contain success indicator with version
         assert "✅" in result
         assert "test-package" in result
         assert "installed successfully" in result
-        
-        # Should NOT contain old verbose format
         assert "Installation return code:" not in result
         assert "Installation output:" not in result
         assert "Verification output:" not in result
@@ -79,13 +75,9 @@ class TestPipInstallPackageRefactored:
         mock_run.side_effect = [mock_install, mock_verify]
         
         result = pip_install_package("test-package")
-        
-        # Should contain success message (already installed is still success)
         assert "✅" in result
         assert "test-package" in result
         assert "installed successfully" in result
-        
-        # Should NOT contain old verbose format
         assert "Installation return code:" not in result
         assert "Requirement already satisfied" not in result
         
@@ -110,13 +102,9 @@ class TestPipInstallPackageRefactored:
         mock_run.side_effect = [mock_install, mock_verify]
         
         result = pip_install_package("nonexistent-package")
-        
-        # Should contain failure indicator with error message
         assert "❌" in result
         assert "nonexistent-package" in result
         assert "installation failed" in result
-        
-        # Should NOT contain old verbose format
         assert "Installation return code:" not in result
         assert "Installation output:" not in result
         
@@ -128,8 +116,6 @@ class TestPipInstallPackageRefactored:
         mock_run.side_effect = subprocess.TimeoutExpired('pip', 120)
         
         result = pip_install_package("large-package")
-        
-        # Should contain timeout indicator
         assert "⏱️" in result
         assert "large-package" in result
         assert "timeout" in result.lower()
@@ -142,8 +128,6 @@ class TestPipInstallPackageRefactored:
         mock_run.side_effect = Exception("Unexpected error occurred")
         
         result = pip_install_package("test-package")
-        
-        # Should NOT contain emoji
         assert "💥" not in result
         
         # SHOULD contain error details
@@ -168,8 +152,6 @@ class TestPipUninstallPackageRefactored:
         mock_run.return_value = mock_result
         
         result = pip_uninstall_package("test-package", force=True)
-        
-        # Should NOT contain emoji or conversational phrases
         assert "✅" not in result
         assert "removed" not in result.lower() or "Successfully uninstalled" in result
         assert "What would you like" not in result
@@ -198,8 +180,6 @@ platform_driver          platform.driver     1.0      stopped"""
         mock_run.return_value = mock_result
         
         result = vctl_status()
-        
-        # Should NOT contain conversational phrases
         assert "Here are your agents" not in result
         assert "currently running" not in result.lower() or "AGENT" in result
         

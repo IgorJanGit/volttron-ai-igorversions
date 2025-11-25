@@ -4,6 +4,7 @@ import re
 import json
 import openai
 import inspect
+
 try:
     from pydantic_ai_slim import Agent
 except ImportError:
@@ -12,6 +13,7 @@ except ImportError:
     except ImportError:
         print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
         Agent = None
+
 from .volttron_commands import (
     start_volttron, stop_volttron, check_volttron_status, simple_volttron_status_check, read_volttron_log,
     vctl_status, vctl_status_detailed, vctl_list_agents, vctl_start_agent, vctl_stop_agent, vctl_health,
@@ -24,25 +26,17 @@ from .volttron_commands import (
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
     smart_install_package, search_github_for_agent, install_agent_from_github,
     list_volttron_packages, list_running_agents, install_from_github_smart, list_all_installations,
-    list_repository_packages
+    list_repository_packages, fetch_webpage_content, execute_system_command, 
+    setup_postgresql_database, create_historian_config
 )
 
-try:
-    from pydantic_ai_slim import Agent
+if Agent is not None:
     agent = Agent(
         model=None,  # Will be set dynamically
         system_prompt=""  # Will be set dynamically
     )
-except ImportError:
-    try:
-        from pydantic_ai import Agent
-        agent = Agent(
-            model=None,  # Will be set dynamically  
-            system_prompt=""  # Will be set dynamically
-        )
-    except ImportError:
-        print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
-        agent = None
+else:
+    agent = None
 
 if agent:
     @agent.tool_plain
@@ -1535,6 +1529,45 @@ Please specify which agent to uninstall. Examples:
         def show_formatting_test_tool() -> str:
             """Show a formatting test to verify output display."""
             return show_formatting_test()
+        
+        @self.agent.tool_plain
+        def fetch_webpage_tool(url: str) -> str:
+            """Fetch and read content from a webpage, especially useful for documentation.
+            
+            Args:
+                url: The URL to fetch (e.g., GitHub README, documentation page)
+            """
+            return fetch_webpage_content(url)
+        
+        @self.agent.tool_plain
+        def execute_command_tool(command: str) -> str:
+            """Execute a safe system command (checking, info gathering).
+            
+            Args:
+                command: The command to execute (only safe read-only commands allowed)
+            """
+            return execute_system_command(command)
+        
+        @self.agent.tool_plain
+        def setup_postgresql_tool(db_name: str = "volttron", db_user: str = "volttron", db_password: str = "volttron") -> str:
+            """Set up PostgreSQL database for VOLTTRON historian.
+            
+            Args:
+                db_name: Database name (default: volttron)
+                db_user: Database user (default: volttron)
+                db_password: Database password (default: volttron)
+            """
+            return setup_postgresql_database(db_name, db_user, db_password)
+        
+        @self.agent.tool_plain
+        def create_historian_config_tool(historian_type: str = "postgresql", db_config: dict = None) -> str:
+            """Create historian agent configuration file.
+            
+            Args:
+                historian_type: Type of historian (postgresql, sqlite)
+                db_config: Database configuration parameters
+            """
+            return create_historian_config(historian_type, db_config)
 
     def _register_volttron_tools_on_agent(self, agent):
         """Register VOLTTRON control tools on a specific agent."""
@@ -1585,6 +1618,14 @@ Please specify which agent to uninstall. Examples:
             "- Python libraries (volttron-*) use pip\n"
             "- VOLTTRON agents use vctl\n"
             "- Let smart_install_package handle the logic - don't overthink it\n\n"
+            "WEBPAGE AND DOCUMENTATION:\n"
+            "- When asked to read a URL or webpage, use fetch_webpage_tool\n"
+            "- Especially for GitHub repositories and documentation\n"
+            "- Extract installation steps, configuration details, or instructions from the content\n\n"
+            "SYSTEM COMMANDS:\n"
+            "- Use execute_command_tool for safe read-only commands (which, ps, ls, cat, etc.)\n"
+            "- For PostgreSQL setup, use setup_postgresql_tool to guide the user\n"
+            "- For historian configuration, use create_historian_config_tool\n\n"
             "INTELLIGENT COMMAND DISCOVERY:\n"
             "- When you don't know a vctl command, use 'run_vctl_help' tool\n"
             "- Or use 'intelligent_vctl_command_discovery' to automatically find and run the right command\n"
@@ -1596,13 +1637,18 @@ Please specify which agent to uninstall. Examples:
             "- check_volttron_status_tool: Check status\n"
             "- vctl_status: Get agent status\n"
             "- smart_install_package: Flexible installation (use this for 'install X' requests)\n"
+            "- fetch_webpage_tool: Fetch and read webpage content (use for URLs, especially GitHub)\n"
+            "- execute_command_tool: Execute safe system commands\n"
+            "- setup_postgresql_tool: Guide PostgreSQL database setup\n"
+            "- create_historian_config_tool: Create historian configuration\n"
             "- run_vctl_help: Get vctl help (general or specific command)\n"
             "- intelligent_vctl_command_discovery: Auto-discover and run vctl commands\n"
             "- install_listener_agent_tool: Install listener\n"
             "- list_agents_tool: List agents\n"
             "- And other VOLTTRON management tools\n\n"
             "EXECUTE COMMANDS DIRECTLY - don't explain what you'll do, just do it and report the result briefly.\n"
-            "When uncertain about a command, use intelligent_vctl_command_discovery to figure it out."
+            "When uncertain about a command, use intelligent_vctl_command_discovery to figure it out.\n"
+            "When given a URL, ALWAYS use fetch_webpage_tool to read it first before responding."
         )
 
     def _setup_agent(self):
@@ -1937,6 +1983,25 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         """Handle direct VOLTTRON commands without AI processing."""
         message_lower = message.lower().strip()
         
+        if any(indicator in message for indicator in ['http://', 'https://', 'github.com', 'www.']):
+            return None
+        
+        database_keywords = ['postgresql', 'postgres', 'mysql', 'database', 'db setup', 'sql setup']
+        volttron_agent_context = ['agent', 'vctl', 'install agent', 'uninstall agent', 'agent status']
+        
+        has_database_keyword = any(keyword in message_lower for keyword in database_keywords)
+        has_agent_context = any(keyword in message_lower for keyword in volttron_agent_context)
+        
+        if has_database_keyword and not has_agent_context:
+            return None
+        
+        if message_lower.startswith(('which ', 'psql ', 'cat ', 'ls ', 'grep ', 'find ')):
+            return None
+        
+        workflow_indicators = ['execute all', 'follow all', 'complete setup', 'full setup', 
+                              'setup and configure', 'install and setup', 'install and configure']
+        if any(indicator in message_lower for indicator in workflow_indicators):
+            return None
       
         if any(phrase in message_lower for phrase in [
             'what is running', 'what\'s running', 'what running', 'whats running',

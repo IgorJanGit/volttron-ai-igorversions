@@ -39,7 +39,6 @@ class TestFakeDriverInstallation(unittest.TestCase):
         print("\n🧪 Testing fake driver library installation...")
         
         with patch('subprocess.run') as mock_run:
-            # Mock successful pip install
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = "Successfully installed volttron-lib-fake-driver-0.2.0rc0"
@@ -48,12 +47,8 @@ class TestFakeDriverInstallation(unittest.TestCase):
             
             with patch('chat_app.volttron_commands.find_pip_command', return_value='/usr/bin/pip'):
                 result = volttron_commands.install_fake_driver_library()
-                
-                # Verify result contains success indicators
                 self.assertIsNotNone(result)
                 print(f"  ✅ Installation result: {result[:200]}")
-                
-                # Should mention the package name
                 self.assertIn('fake', result.lower())
     
     def test_install_fake_driver_library_already_installed(self):
@@ -61,7 +56,6 @@ class TestFakeDriverInstallation(unittest.TestCase):
         print("\n🧪 Testing fake driver already installed scenario...")
         
         with patch('subprocess.run') as mock_run:
-            # Mock already satisfied response
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = "Requirement already satisfied: volttron-lib-fake-driver"
@@ -82,7 +76,6 @@ class TestFakeDriverInstallation(unittest.TestCase):
             result = volttron_commands.install_fake_driver_library()
             
             self.assertIsNotNone(result)
-            # Should mention pip is not available
             self.assertIn('pip', result.lower())
             print(f"  ✅ No pip error handled correctly")
 
@@ -150,8 +143,6 @@ class TestFakeDriverLogs(unittest.TestCase):
     def test_show_fake_driver_logs_with_data(self):
         """Test showing fake driver logs when data exists."""
         print("\n🧪 Testing show_fake_driver_logs with data...")
-        
-        # Create a sample log file with fake driver data
         sample_log = """2025-11-11 10:30:45,123 (platformdriveragent-4.0 12345) volttron.driver.base INFO: publishing: devices/campus/building/fake/all
 2025-11-11 10:30:45,124 (platformdriveragent-4.0 12345) volttron.driver.base DEBUG: {'OutsideAirTemperature1': 50.0, 'SampleWritableFloat1': 10.0}
 2025-11-11 10:30:50,125 (platformdriveragent-4.0 12345) volttron.driver.base INFO: publishing: devices/campus/building/fake/all
@@ -172,7 +163,6 @@ class TestFakeDriverLogs(unittest.TestCase):
                 result = volttron_commands.show_fake_driver_logs(num_lines=50)
                 
                 self.assertIsNotNone(result)
-                # Should contain fake driver data indicators
                 print(f"  ✅ Log output contains fake driver data")
     
     def test_show_fake_driver_logs_no_log_file(self):
@@ -183,9 +173,7 @@ class TestFakeDriverLogs(unittest.TestCase):
             result = volttron_commands.show_fake_driver_logs()
             
             self.assertIsNotNone(result)
-            # Should provide helpful instructions
             self.assertIn('log', result.lower())
-            # Should mention how to start VOLTTRON with logging
             self.assertIn('volttron', result.lower())
             print(f"  ✅ No log file provides helpful instructions")
     
@@ -303,7 +291,6 @@ platform.driver          platform.driver      running [12345]
                 result = volttron_commands.setup_fake_driver_complete()
                 
                 self.assertIsNotNone(result)
-                # Should provide step-by-step instructions or execute steps
                 print(f"  ✅ Complete setup function provides guidance")
 
 
@@ -363,25 +350,17 @@ class TestFakeDriverDataVisibility(unittest.TestCase):
         
         with open(self.test_log_file, 'w') as f:
             f.write(sample_log_with_data)
-        
-        # Test 1: Verify VOLTTRON started with verbose logging
         print("  📋 Prerequisite 1: VOLTTRON started with -vv logging")
         self.assertIn('volttron.platform INFO', sample_log_with_data)
         self.assertIn('volttron.driver.base DEBUG', sample_log_with_data)
         print("     ✅ Log contains DEBUG level output (verbose logging enabled)")
-        
-        # Test 2: Verify platform driver is running
         print("  📋 Prerequisite 2: Platform driver running")
         self.assertIn('Platform Driver agent started', sample_log_with_data)
         self.assertIn('platformdriveragent', sample_log_with_data.lower())
         print("     ✅ Platform driver is running")
-        
-        # Test 3: Verify fake driver config is loaded
         print("  📋 Prerequisite 3: Fake driver config loaded")
         self.assertIn('devices/campus/building/fake', sample_log_with_data)
         print("     ✅ Fake driver config path found in logs")
-        
-        # Test 4: Verify fake driver data is publishing
         print("  📋 Expected Result: Fake driver data appears in logs")
         with patch('chat_app.volttron_commands.get_volttron_home', return_value=self.test_log_dir):
             with patch('subprocess.run') as mock_run:
@@ -394,14 +373,11 @@ class TestFakeDriverDataVisibility(unittest.TestCase):
                 result = volttron_commands.show_fake_driver_logs(num_lines=100)
                 
                 self.assertIsNotNone(result)
-                # Verify fake driver point names appear
                 self.assertIn('OutsideAirTemperature1', sample_log_with_data)
                 self.assertIn('SampleWritableFloat1', sample_log_with_data)
                 self.assertIn('EKG', sample_log_with_data)
                 self.assertIn('Heartbeat', sample_log_with_data)
                 print("     ✅ Fake driver data points visible in logs")
-                
-                # Verify data is publishing at regular intervals
                 publish_count = sample_log_with_data.count('publishing: devices/campus/building/fake/all')
                 self.assertGreater(publish_count, 1)
                 print(f"     ✅ Fake driver publishing data ({publish_count} publications found)")

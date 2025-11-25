@@ -1,15 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import List, Optional
 import os
 
 from .ai_service import AIService
-# from .volttron_commands import start_volttron, stop_volttron
 
-# Global app instance
 app = None
 
 class ChatMessage(BaseModel):
@@ -32,14 +28,10 @@ def create_app(model_name: str) -> FastAPI:
         version="1.0.0"
     )
     
-    # Initialize AI service
     ai_service = AIService(model_name)
-    
-    # Store AI service in app state
     app.state.ai_service = ai_service
     app.state.model_name = model_name
     
-    # Setup templates
     import os
     template_dir = os.path.join(os.path.dirname(__file__), "templates")
     templates = Jinja2Templates(directory=template_dir)
@@ -77,23 +69,5 @@ def create_app(model_name: str) -> FastAPI:
                 "groq (e.g., groq:mixtral-8x7b-32768)"
             ]
         }
-    
-    # @app.post("/volttron/start")
-    # async def start_volttron_endpoint():
-    #     """Start VOLTTRON platform."""
-    #     try:
-    #         result = start_volttron()
-    #         return {"status": "success", "message": result}
-    #     except Exception as e:
-    #         raise HTTPException(status_code=500, detail=f"Error starting VOLTTRON: {str(e)}")
-    
-    # @app.post("/volttron/stop")
-    # async def stop_volttron_endpoint():
-    #     """Stop VOLTTRON platform."""
-    #     try:
-    #         result = stop_volttron()
-    #         return {"status": "success", "message": result}
-    #     except Exception as e:
-    #         raise HTTPException(status_code=500, detail=f"Error stopping VOLTTRON: {str(e)}")
     
     return app

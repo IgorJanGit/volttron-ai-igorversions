@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch, MagicMock
 import sys
 import os
 
-# Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from chat_app.volttron_commands import search_github_for_agent, install_agent_from_github
@@ -47,12 +46,9 @@ class TestSearchGitHubForAgent:
         assert 'https://github.com/eclipse-volttron/volttron-listener' in result
         assert 'Do you want to install this agent?' in result
         assert 'yes/no' in result
-        # Verify pagination info is included
         assert 'Pages scanned:' in result
         assert 'Repositories scanned:' in result
-        # Verify installation method is included
         assert 'Installation method:' in result
-        # Verify no hardcoded emoji or marketing language
         assert '🎉' not in result
         assert '✨' not in result
     
@@ -88,10 +84,8 @@ class TestSearchGitHubForAgent:
         assert 'volttron-lib-bacnet-driver' in result
         assert 'Question: Which one do you want?' in result
         assert 'enter number 1-2' in result
-        # Verify pagination info is included
         assert 'Pages scanned:' in result
         assert 'Repositories scanned:' in result
-        # Verify no hardcoded emoji
         assert '🎉' not in result
         assert '✨' not in result
     
@@ -117,7 +111,6 @@ class TestSearchGitHubForAgent:
         assert 'Matches found: 0' in result
         assert 'nonexistent' in result
         assert 'Suggestion:' in result
-        # Verify structured data response
         assert 'Repositories scanned:' in result
     
     def test_api_request_failed(self):
@@ -131,7 +124,6 @@ class TestSearchGitHubForAgent:
         assert 'Status: API request failed' in result
         assert 'Status code: 403' in result
         assert 'Agent searched: listener' in result
-        # Verify no hardcoded suggestions
         assert 'try again' not in result.lower() or 'Error:' in result
     
     def test_network_timeout(self):
@@ -141,7 +133,6 @@ class TestSearchGitHubForAgent:
         
         assert 'Status: Error' in result or 'Status: Timeout' in result
         assert 'listener' in result
-        # Verify structured error response
         assert 'Error' in result
     
     def test_returns_structured_data_not_emoji(self):
@@ -162,24 +153,20 @@ class TestSearchGitHubForAgent:
         with patch('requests.get', return_value=mock_response):
             result = search_github_for_agent('test')
         
-        # Check for structured data format
         assert 'GitHub agent search completed.' in result
         assert 'Status:' in result
         assert 'Agent searched:' in result
         assert 'Pages scanned:' in result
         assert 'Repositories scanned:' in result
         
-        # Verify NO hardcoded emoji or marketing language
         emoji_list = ['🎉', '✨', '🚀', '💡', '🔥', '⚡', '✅', '❌']
         for emoji in emoji_list:
             if emoji in result:
-                # Only ✅ and ❌ are acceptable as status indicators in structured data
                 if emoji not in ['✅', '❌']:
                     assert False, f"Found hardcoded emoji: {emoji}"
     
     def test_pagination_multiple_pages(self):
         """Test that pagination works across multiple pages of results."""
-        # Mock responses for multiple pages
         page1_response = Mock()
         page1_response.status_code = 200
         page1_response.json.return_value = [
@@ -206,17 +193,14 @@ class TestSearchGitHubForAgent:
             } for i in range(50)
         ]
         
-        # Create a side effect that returns different responses for different calls
         mock_get = Mock()
         mock_get.side_effect = [page1_response, page2_response]
         
         with patch('requests.get', mock_get):
             result = search_github_for_agent('agent')
         
-        # Verify it scanned multiple pages
         assert 'Pages scanned: 2' in result
         assert 'Repositories scanned: 150' in result
-        # Verify it found matches from both pages
         assert 'Status: Multiple matches found' in result
         assert 'Matches found: 150' in result
     
@@ -237,7 +221,7 @@ class TestSearchGitHubForAgent:
         
         page2_response = Mock()
         page2_response.status_code = 200
-        page2_response.json.return_value = []  # Empty page
+        page2_response.json.return_value = []
         
         mock_get = Mock()
         mock_get.side_effect = [page1_response, page2_response]
@@ -245,7 +229,6 @@ class TestSearchGitHubForAgent:
         with patch('requests.get', mock_get):
             result = search_github_for_agent('test')
         
-        # Should stop after page 1 since page 2 is empty
         assert 'Pages scanned: 1' in result
         assert 'Repositories scanned: 1' in result
     
@@ -274,7 +257,7 @@ class TestSearchGitHubForAgent:
                 'description': f'Repo {i}',
                 'updated_at': '2025-11-01T12:00:00Z',
                 'stargazers_count': 1
-            } for i in range(25)  # Less than 100, so this is the last page
+            } for i in range(25)
         ]
         
         mock_get = Mock()
@@ -283,14 +266,12 @@ class TestSearchGitHubForAgent:
         with patch('requests.get', mock_get):
             result = search_github_for_agent('repo')
         
-        # Should stop after page 2 since it returned < 100 repos
         assert 'Pages scanned: 2' in result
         assert 'Repositories scanned: 125' in result
         assert 'Matches found: 125' in result
     
     def test_pagination_respects_max_page_limit(self):
         """Test that pagination stops at the safety limit."""
-        # Create a response that always returns 100 repos (simulating many pages)
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = [
@@ -307,7 +288,6 @@ class TestSearchGitHubForAgent:
         with patch('requests.get', return_value=mock_response):
             result = search_github_for_agent('agent')
         
-        # Should stop at page 10 (max_pages limit)
         assert 'Pages scanned: 10' in result
         assert 'Repositories scanned: 1000' in result
     
@@ -327,7 +307,7 @@ class TestSearchGitHubForAgent:
         ]
         
         page2_response = Mock()
-        page2_response.status_code = 500  # Server error on page 2
+        page2_response.status_code = 500
         
         mock_get = Mock()
         mock_get.side_effect = [page1_response, page2_response]
@@ -335,7 +315,6 @@ class TestSearchGitHubForAgent:
         with patch('requests.get', mock_get):
             result = search_github_for_agent('test')
         
-        # Should return results from page 1 even though page 2 failed
         assert 'Pages scanned: 1' in result
         assert 'Repositories scanned: 100' in result
         assert 'Matches found: 100' in result
@@ -358,7 +337,6 @@ class TestInstallAgentFromGitHub:
         
         assert '✅' in result
         assert 'volttron-listener installed from GitHub successfully' in result
-        # Verify no hardcoded emoji (other than success indicator)
         assert '🎉' not in result
         assert '✨' not in result
     
@@ -403,7 +381,6 @@ class TestInstallAgentFromGitHub:
         mock_result.stdout = "Done"
         mock_result.stderr = ""
         
-        # Test with .git extension
         with patch('subprocess.run', return_value=mock_result):
             with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'):
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
@@ -412,7 +389,6 @@ class TestInstallAgentFromGitHub:
         assert '✅' in result
         assert 'my-agent installed from GitHub successfully' in result
         
-        # Test without .git extension
         with patch('subprocess.run', return_value=mock_result):
             with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'):
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
@@ -433,11 +409,8 @@ class TestInstallAgentFromGitHub:
                 with patch('chat_app.volttron_commands.get_volttron_home', return_value='/home/user/.volttron'):
                     result = install_agent_from_github('https://github.com/eclipse-volttron/test.git')
         
-        # Check for concise success message
         assert '✅' in result
         assert 'test installed from GitHub successfully' in result
-        
-        # Verify NO hardcoded marketing language
         assert '🎉' not in result
         assert 'Congratulations' not in result
         assert 'Great job' not in result

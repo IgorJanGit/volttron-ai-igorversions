@@ -22,8 +22,6 @@ def send_test_message(message, description):
         )
         result = response.json()
         ai_response = result.get('response', 'No response')
-        
-        # Check for intelligent discovery indicators
         used_help = "run_vctl_help" in ai_response or "vctl --help" in ai_response.lower()
         used_discovery = "intelligent_vctl" in ai_response.lower()
         command_executed = "✅" in ai_response or any(word in ai_response.lower() for word in ["status", "peer", "tag", "auth", "stats"])

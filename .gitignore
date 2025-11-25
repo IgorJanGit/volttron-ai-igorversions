@@ -80,6 +80,7 @@ myapp.log
 .venv/
 venv/
 env/
+env312/
 ENV/
 
 # Package installations

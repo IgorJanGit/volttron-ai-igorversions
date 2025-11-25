@@ -26,14 +26,10 @@ def print_header():
 def check_requirements():
     """Check if all requirements are met"""
     print("🔍 Checking requirements...")
-    
-    # Check if chat_app exists
     chat_app_path = Path("chat_app")
     if not chat_app_path.exists():
         print("❌ Error: chat_app directory not found!")
         return False
-    
-    # Check main files
     main_file = chat_app_path / "__main__.py"
     app_file = chat_app_path / "app.py"
     
@@ -137,8 +133,6 @@ exit(0 if result.wasSuccessful() else 1)
 def main():
     """Main execution function"""
     print_header()
-    
-    # Check requirements
     if not check_requirements():
         sys.exit(1)
     

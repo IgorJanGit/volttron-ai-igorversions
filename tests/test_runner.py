@@ -51,8 +51,6 @@ def install_test_dependencies():
 
 def run_tests(verbose=False, coverage=False, html_report=False, test_file=None):
     """Run the tests with specified options."""
-    
-    # Set up environment
     os.environ['TESTING'] = 'true'
     if 'OPENAI_API_KEY' not in os.environ:
         os.environ['OPENAI_API_KEY'] = 'test-key-for-testing'
@@ -69,14 +67,11 @@ def run_tests(verbose=False, coverage=False, html_report=False, test_file=None):
             cmd.append('--cov-report=html:htmlcov')
     
     if test_file:
-        # Handle both relative and absolute paths
         if not test_file.startswith('tests/'):
             test_file = f'tests/{test_file}'
         cmd.append(test_file)
     else:
         cmd.append('tests/')
-        
-    # Add standard options
     cmd.extend(['--tb=short', '--strict-markers'])
     
     colored_print("🔍 Running tests...", 'blue')
@@ -142,8 +137,6 @@ Examples:
         if not install_test_dependencies():
             sys.exit(1)
         print()
-    
-    # Check pytest availability
     if not check_pytest_available():
         sys.exit(1)
     

@@ -24,10 +24,8 @@ from unittest.mock import Mock, patch, MagicMock, call
 from typing import Dict, Any
 import sys
 
-# Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import the AI service
 from chat_app.ai_service import AIService, agent
 
 
@@ -56,7 +54,6 @@ class TestPydanticAIFunctionTools(unittest.TestCase):
         """Test that global agent follows Pydantic AI structure."""
         print("\n🧪 Testing global Pydantic AI agent structure...")
         
-        # Test agent availability (may be None if Pydantic AI unavailable)
         if agent is None:
             print("⚠️  Pydantic AI not available, testing fallback structure")
             self.assertIsNone(agent)
@@ -64,7 +61,6 @@ class TestPydanticAIFunctionTools(unittest.TestCase):
             print("✅ Pydantic AI agent available")
             self.assertIsNotNone(agent)
             
-            # Test agent has tools registered
             if hasattr(agent, '_tools'):
                 print(f"✅ Agent has {len(agent._tools)} tools registered via decorators")
                 self.assertGreater(len(agent._tools), 0)
@@ -118,12 +114,11 @@ class TestPydanticAIFunctionTools(unittest.TestCase):
         
         ai_service = AIService('claude-3-7-sonnet-20250219-v1-birthright')
         
-        # Test that AIService uses the global agent
         if agent is not None:
-            print("✅ AIService should use global Pydantic AI agent")
-            self.assertEqual(ai_service.agent, agent)
+            print("✅ AIService should create Pydantic AI agent")
+            self.assertIsNotNone(ai_service.agent)
+            self.assertEqual(type(ai_service.agent).__name__, 'Agent')
             
-            # Test that agent is configured with model and system prompt
             if hasattr(ai_service.agent, 'model'):
                 print(f"✅ Agent model configured: {ai_service.agent.model}")
             if hasattr(ai_service.agent, 'system_prompt'):
@@ -132,7 +127,6 @@ class TestPydanticAIFunctionTools(unittest.TestCase):
             print("⚠️  Pydantic AI not available, testing fallback")
             self.assertIsNone(ai_service.agent)
             
-        # Test fallback function tools are still available
         print(f"✅ Fallback function tools available: {len(ai_service.function_tools)}")
         self.assertGreater(len(ai_service.function_tools), 0)
         
@@ -835,6 +829,12 @@ class TestPydanticAIIntegration(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment for Pydantic AI integration tests."""
+        # Mock the pydantic-ai Agent since 'test-model' is not a real model
+        from unittest.mock import MagicMock
+        self.agent_patcher = patch('chat_app.ai_service.Agent')
+        mock_agent_class = self.agent_patcher.start()
+        mock_agent_class.return_value = MagicMock()
+        
         self.ai_service = AIService('test-model')
         
         # Disable VOLTTRON installation checks 
@@ -844,6 +844,7 @@ class TestPydanticAIIntegration(unittest.TestCase):
     def tearDown(self):
         """Clean up test environment."""
         self.install_patcher.stop()
+        self.agent_patcher.stop()
         
     def test_ai_runs_vctl_status_and_understands_output(self):
         """Demonstrate AI can run vctl status and understand what it reads."""

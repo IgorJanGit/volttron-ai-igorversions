@@ -25,8 +25,6 @@ class TestListRepositoryPackages(unittest.TestCase):
     def test_lists_volttron_packages_with_versions(self, mock_run, mock_find_pip):
         """Test that it lists VOLTTRON packages with versions."""
         mock_find_pip.return_value = '/path/to/pip'
-        
-        # Mock pip list output
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = """Package                      Version
@@ -40,16 +38,10 @@ ansible                      2.9.0
         mock_run.return_value = mock_result
         
         result = list_repository_packages()
-        
-        # Check that it includes VOLTTRON packages
         assert 'volttron (10.0.0)' in result
         assert 'volttron-listener (1.0.0)' in result
         assert 'volttron-platform-driver (2.1.0)' in result
-        
-        # Check that it includes related tools
         assert 'ansible (2.9.0)' in result
-        
-        # Check that it doesn't include unrelated packages
         assert 'some-other-package' not in result
     
     @patch('chat_app.volttron_commands.find_pip_command')
@@ -130,8 +122,6 @@ class TestListAllInstallations(unittest.TestCase):
         """Test that it shows vctl status output."""
         mock_vctl.return_value = '/path/to/vctl'
         mock_home.return_value = '/volttron_home'
-        
-        # Mock vctl status
         vctl_result = Mock()
         vctl_result.returncode = 0
         vctl_result.stdout = """UUID   AGENT                 STATUS
@@ -155,13 +145,9 @@ class TestListAllInstallations(unittest.TestCase):
         mock_vctl.return_value = '/path/to/vctl'
         mock_home.return_value = '/volttron_home'
         mock_pip.return_value = '/path/to/pip'
-        
-        # Mock vctl status (first call)
         vctl_result = Mock()
         vctl_result.returncode = 0
         vctl_result.stdout = "UUID   AGENT   STATUS"
-        
-        # Mock pip list (second call)
         pip_result = Mock()
         pip_result.returncode = 0
         pip_result.stdout = """Package                      Version
@@ -202,18 +188,12 @@ volttron-listener            1.0.0
         mock_vctl.return_value = '/path/to/vctl'
         mock_home.return_value = '/volttron_home'
         mock_pip.return_value = '/path/to/pip'
-        
-        # Mock vctl status
         vctl_result = Mock()
         vctl_result.returncode = 0
         vctl_result.stdout = "UUID   AGENT   STATUS"
-        
-        # Mock pip list
         pip_result = Mock()
         pip_result.returncode = 0
         pip_result.stdout = "Package   Version\nvolttron  10.0.0"
-        
-        # Mock ansible-galaxy list
         ansible_result = Mock()
         ansible_result.returncode = 0
         ansible_result.stdout = "- volttron-ansible, 1.0.0"
@@ -221,8 +201,6 @@ volttron-listener            1.0.0
         mock_run.side_effect = [vctl_result, pip_result, ansible_result]
         
         result = list_all_installations()
-        
-        # Should include Ansible role if found
         if 'volttron-ansible' in result:
             assert 'Ansible' in result
 
@@ -247,8 +225,6 @@ ansible                      2.9.0
         mock_run.return_value = mock_result
         
         result = list_repository_packages()
-        
-        # Check format
         assert '📦' in result  # Should have emoji
         assert 'Repository Packages' in result
         assert 'VOLTTRON packages' in result
@@ -275,8 +251,6 @@ ansible                      2.9.0
         mock_run.side_effect = [vctl_result, pip_result]
         
         result = list_all_installations()
-        
-        # Should be concise - not verbose
         assert 'Operation' not in result  # No verbose "operation completed" text
         lines = result.split('\n')
         assert len(lines) < 20  # Should be compact

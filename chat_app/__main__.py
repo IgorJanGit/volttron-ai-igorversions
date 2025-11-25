@@ -35,13 +35,9 @@ def parse_args():
 
 def main():
     """Main entry point for the application."""
-    # Load environment variables
     load_dotenv()
-    
-    # Parse command line arguments
     args = parse_args()
     
-    # Get configuration
     model = args.model or os.getenv("AI_MODEL")
     host = args.host or os.getenv("HOST", "127.0.0.1")
     port = args.port or int(os.getenv("PORT", "8000"))
@@ -51,10 +47,8 @@ def main():
         print("Example: python -m chat_app --model openai:gpt-3.5-turbo")
         return 1
     
-    # Create the FastAPI app
     app = create_app(model)
     
-    # Run the server
     print(f"Starting chat app with model: {model}")
     print(f"Server will be available at: http://{host}:{port}")
     
