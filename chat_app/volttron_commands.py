@@ -1158,6 +1158,99 @@ def vctl_status_detailed():
     """Get detailed VOLTTRON agent status with explanations."""
     return vctl_status(explain=True)
 
+def vctl_config_store(config_file_path, config_name, config_type='config'):
+    """
+    Store a configuration file in VOLTTRON's config store.
+    
+    Args:
+        config_file_path: Path to the configuration file to store
+        config_name: Name for the config in the store (e.g., 'devices/fake.csv')
+        config_type: Type of config ('config', 'csv', or 'json')
+    
+    Returns:
+        str: Result message
+    """
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return "❌ vctl command not found. Please ensure VOLTTRON is installed."
+        
+        if not os.path.exists(config_file_path):
+            return f"❌ Configuration file not found: {config_file_path}"
+        
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        cmd_str = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} config store platform.driver {config_name} {config_file_path} --{config_type}"
+        
+        result = subprocess.run(
+            cmd_str,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            return f"✅ Successfully stored {config_name} in config store"
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            return f"❌ Failed to store config: {error_msg}"
+            
+    except subprocess.TimeoutExpired:
+        return f"❌ Timeout while storing configuration"
+    except Exception as e:
+        return f"❌ Error storing configuration: {str(e)}"
+
+def vctl_config_list(agent_vip_identity='platform.driver'):
+    """
+    List configurations in VOLTTRON's config store for a specific agent.
+    
+    Args:
+        agent_vip_identity: VIP identity of the agent (default: 'platform.driver')
+    
+    Returns:
+        str: List of configurations
+    """
+    try:
+        vctl_cmd = find_vctl_command()
+        volttron_home = get_volttron_home()
+        
+        if not vctl_cmd:
+            return "❌ vctl command not found. Please ensure VOLTTRON is installed."
+        
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        cmd_str = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} config list {agent_vip_identity}"
+        
+        result = subprocess.run(
+            cmd_str,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if output:
+                return f"📋 Configuration store for {agent_vip_identity}:\n{output}"
+            else:
+                return f"📋 No configurations found for {agent_vip_identity}"
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            if "not running" in error_msg.lower():
+                return "❌ VOLTTRON is not running. Please start VOLTTRON first."
+            return f"❌ Failed to list configurations: {error_msg}"
+            
+    except subprocess.TimeoutExpired:
+        return f"❌ Timeout while listing configurations"
+    except Exception as e:
+        return f"❌ Error listing configurations: {str(e)}"
+
 def check_volttron_status(brief=True):
     """Check VOLTTRON status with simple yes/no answer unless details requested."""
     try:

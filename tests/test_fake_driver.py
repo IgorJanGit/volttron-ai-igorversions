@@ -98,31 +98,79 @@ class TestFakeDriverConfiguration(unittest.TestCase):
         """Test adding fake.csv to platform driver config store."""
         print("\n🧪 Testing vctl config store fake.csv...")
         
-        # Note: vctl_config_store function doesn't exist yet
-        # This test documents the expected functionality
-        print("  ℹ️  vctl_config_store function not yet implemented")
-        print("  ℹ️  Skipping until function is created")
-        self.skipTest("vctl_config_store function not implemented yet")
+        fake_csv_path = os.path.join(self.test_config_dir, 'fake.csv')
+        with open(fake_csv_path, 'w') as f:
+            f.write("Point Name,Volttron Point Name,Units,Register Name\n")
+            f.write("OutsideAirTemperature1,OutsideAirTemperature1,F,>f\n")
+        
+        with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+             patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'), \
+             patch('subprocess.run') as mock_run:
+            
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = "Stored config successfully"
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            
+            result = volttron_commands.vctl_config_store(
+                fake_csv_path, 
+                'devices/fake.csv', 
+                'csv'
+            )
+            
+            self.assertIsNotNone(result)
+            self.assertIn('Successfully stored', result)
+            print(f"  ✅ fake.csv stored in config store")
     
     def test_vctl_config_store_fake_config(self):
         """Test adding fake.config to platform driver config store."""
         print("\n🧪 Testing vctl config store fake.config...")
         
-        # Note: vctl_config_store function doesn't exist yet
-        # This test documents the expected functionality
-        print("  ℹ️  vctl_config_store function not yet implemented")
-        print("  ℹ️  Skipping until function is created")
-        self.skipTest("vctl_config_store function not implemented yet")
+        fake_config_path = os.path.join(self.test_config_dir, 'fake.config')
+        with open(fake_config_path, 'w') as f:
+            f.write('{"driver_config": {}, "driver_type": "fakedriver"}')
+        
+        with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+             patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'), \
+             patch('subprocess.run') as mock_run:
+            
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = "Stored config successfully"
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            
+            result = volttron_commands.vctl_config_store(
+                fake_config_path, 
+                'devices/fake', 
+                'config'
+            )
+            
+            self.assertIsNotNone(result)
+            self.assertIn('Successfully stored', result)
+            print(f"  ✅ fake.config stored in config store")
     
     def test_vctl_config_list_platform_driver(self):
         """Test listing platform driver configurations."""
         print("\n🧪 Testing vctl config list platform.driver...")
         
-        # Note: vctl_config_list function doesn't exist yet
-        # This test documents the expected functionality
-        print("  ℹ️  vctl_config_list function not yet implemented")
-        print("  ℹ️  Skipping until function is created")
-        self.skipTest("vctl_config_list function not implemented yet")
+        with patch('chat_app.volttron_commands.find_vctl_command', return_value='/usr/bin/vctl'), \
+             patch('chat_app.volttron_commands.get_volttron_home', return_value='/tmp/volttron'), \
+             patch('subprocess.run') as mock_run:
+            
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = "devices/fake.csv\ndevices/fake\nconfig"
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            
+            result = volttron_commands.vctl_config_list('platform.driver')
+            
+            self.assertIsNotNone(result)
+            self.assertIn('Configuration store', result)
+            self.assertIn('devices/fake', result)
+            print(f"  ✅ Configuration list retrieved successfully")
 
 
 class TestFakeDriverLogs(unittest.TestCase):
