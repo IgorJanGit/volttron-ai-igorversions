@@ -23,6 +23,7 @@ from .volttron_commands import (
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
     show_fake_driver_logs, check_fake_driver_status, watch_fake_driver_logs, setup_fake_driver_complete,
+    configure_fake_driver, start_fake_driver,
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
     smart_install_package, search_github_for_agent, install_agent_from_github,
     list_volttron_packages, list_running_agents, install_from_github_smart, list_all_installations,
@@ -32,7 +33,7 @@ from .volttron_commands import (
 
 if Agent is not None:
     agent = Agent(
-        model=None,  # Will be set dynamically
+        model=None,
         system_prompt=""  # Will be set dynamically
     )
 else:
@@ -377,17 +378,17 @@ class AIService:
     def __init__(self, model_name: str):
         """Initialize the AI service with a specific model."""
         self.model_name = model_name
-        self.agent = agent  # Use the globally defined Pydantic AI agent
+        self.agent = agent
         self.custom_client = None
-        self.conversation_history = []  # Track conversation for context
-        self.last_numbered_options = {}  # Track last numbered options provided
+        self.conversation_history = []
+        self.last_numbered_options = {}
         self.fake_driver_setup_state = "not_started"  # Track fake driver setup progress
-        self.volttron_checked = False  # Track if we've checked VOLTTRON installation
+        self.volttron_checked = False
         self.conversation_file = "conversation_history.json"  # File to persist conversation
-        self.last_action = None  # Track the last action performed for context reversal
-        self.last_action_details = {}  # Store details about the last action
-        self.function_tools = {}  # Registry of available function tools (for fallback)
-        self.system_prompt = self._get_volttron_system_prompt()  # Initialize system prompt
+        self.last_action = None
+        self.last_action_details = {}
+        self.function_tools = {}
+        self.system_prompt = self._get_volttron_system_prompt()
         
         if self.agent:
             try:
@@ -398,7 +399,7 @@ class AIService:
                 self.agent = None
         
         self._register_fallback_function_tools()
-        self._load_conversation_history()  # Load any previous conversation
+        self._load_conversation_history()
         self._setup_agent()
     
     def _load_conversation_history(self):
@@ -456,7 +457,7 @@ class AIService:
                 "function": check_volttron_status,
                 "schema": {
                     "name": "check_volttron_status",
-                    "description": "Check if VOLTTRON platform is running",
+                    "description": "Check if VOLTTRON platform is running. Returns a clear yes/no answer. Use this when user asks 'is VOLTTRON running?' or similar questions.",
                     "parameters": {
                         "type": "object", 
                         "properties": {},
@@ -480,7 +481,7 @@ class AIService:
                 "function": vctl_status,
                 "schema": {
                     "name": "vctl_status",
-                    "description": "Get current status of all installed agents",
+                    "description": "List all installed VOLTTRON agents with their status. Use when user asks 'what agents do I have', 'list agents', 'show agents', or 'which agents are installed'.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -736,6 +737,30 @@ class AIService:
                 "schema": {
                     "name": "setup_fake_driver_complete",
                     "description": "Complete automated setup of fake driver - installs library, platform driver, configures, and starts everything so user can immediately see fake data in logs",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "configure_fake_driver": {
+                "function": configure_fake_driver,
+                "schema": {
+                    "name": "configure_fake_driver",
+                    "description": "Configure the fake driver with config files and restart platform driver",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "start_fake_driver": {
+                "function": start_fake_driver,
+                "schema": {
+                    "name": "start_fake_driver",
+                    "description": "Complete workflow to start fake driver - installs library, platform driver, configures, and starts everything",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -2002,6 +2027,25 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
                               'setup and configure', 'install and setup', 'install and configure']
         if any(indicator in message_lower for indicator in workflow_indicators):
             return None
+        
+        if 'then' in message_lower or 'and then' in message_lower:
+            if any(word in message_lower for word in ['start', 'startup', 'launch']) and 'install' in message_lower:
+                if 'listener' in message_lower:
+                    return self._execute_start_then_install_listener()
+                elif 'driver' in message_lower or 'platform driver' in message_lower:
+                    return self._execute_start_then_install_driver()
+        
+        if any(phrase in message_lower for phrase in ['yes, do it', 'yes do it', 'do it', 'go ahead', 'proceed']):
+            if hasattr(self, 'conversation_history') and self.conversation_history:
+                recent_messages = self.conversation_history[-3:]
+                for msg in recent_messages:
+                    if isinstance(msg, dict) and 'content' in msg:
+                        content = msg['content'].lower()
+                        if 'multi-step solution' in content and 'install' in content:
+                            if 'listener' in content:
+                                return self._execute_start_then_install_listener()
+                            elif 'driver' in content or 'platform driver' in content:
+                                return self._execute_start_then_install_driver()
       
         if any(phrase in message_lower for phrase in [
             'what is running', 'what\'s running', 'what running', 'whats running',
@@ -2012,21 +2056,21 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         
 
         elif any(phrase in message_lower for phrase in [
-            'is volttron running', 'is platform running', 'volttron running'
+            'is volttron running', 'is platform running', 'volttron running',
+            'volttron running?', 'is it running', 'is volttron up',
+            'check if volttron is running', 'check volttron running',
+            'volttron status?', 'what is volttron status', 'volttron up?',
+            'tell me if volttron', 'is the platform running', 'platform running?',
+            'check if volttron', 'volttron active?', 'is volttron active'
         ]):
         
             from chat_app.volttron_commands import is_volttron_running
             return is_volttron_running()
         
-     
         if message_lower in ['status', 'vctl status', 'agent status', 'check status']:
             return self.call_function_tool("vctl_status", {})
-        elif message_lower in ['is volttron running', 'check if volttron is running', 'volttron running']:
-            return self.call_function_tool("simple_volttron_status_check", {})
-        elif message_lower in ['volttron status', 'platform status', 'check volttron']:
-            return self.call_function_tool("check_volttron_status", {})
-     
-        elif any(all(word in message_lower for word in combo) for combo in [
+        
+        elif (any(all(word in message_lower for word in combo) for combo in [
             ['what', 'agents', 'running'], 
             ['which', 'agents', 'running'],
             ['what', 'agents', 'installed'],
@@ -2042,8 +2086,13 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             ['report', 'agents', 'running'],
             ['report', 'agents', 'installed'],
             ['agents', 'status'],
-            ['agent', 'status']  # Added to catch "what is agent status"
-        ]):
+            ['agent', 'status']
+        ]) or any(phrase in message_lower for phrase in [
+            'list agents', 'show agents', 'show me agents', 'list my agents',
+            'show my agents', 'what agents', 'which agents', 'agents?',
+            'list all agents', 'show all agents', 'get agents', 'vctl status',
+            'show me all agents', 'list all my agents', 'display agents'
+        ])):
             print(f"Detected agent status pattern in '{message}' - executing vctl_status directly")
             
             return self.call_function_tool("vctl_status", {})
@@ -2095,7 +2144,71 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             'vctl install listener', 'vctl install volttron-listener',
             'setup listener', 'set up listener', 'add listener', 'get listener'
         ]):
+            return self._handle_install_listener_intent()
+        
+        elif any(phrase in message_lower for phrase in [
+            'install fake driver library', 'install fake driver lib',
+            'install the fake driver library', 'fake driver library',
+            'setup fake driver library', 'set up fake driver library',
+            'install volttron-lib-fake-driver', 'install fake-driver library'
+        ]):
+            return self.call_function_tool("install_fake_driver_library", {})
+        
+        elif any(phrase in message_lower for phrase in [
+            'configure fake driver', 'config fake driver', 'setup fake driver',
+            'set up fake driver', 'fake driver config', 'configure fake'
+        ]):
+            return self.call_function_tool("configure_fake_driver", {})
+        
+        elif any(phrase in message_lower for phrase in [
+            'start fake driver', 'start the fake driver', 'run fake driver',
+            'launch fake driver', 'enable fake driver', 'turn on fake driver'
+        ]):
+            return self.call_function_tool("start_fake_driver", {})
+        
+        elif any(phrase in message_lower for phrase in [
+            'install platform driver', 'install driver', 'setup driver',
+            'set up platform driver', 'add platform driver', 'install fake driver'
+        ]):
+            return self._handle_install_driver_intent()
+        
+        elif 'install' in message_lower and 'agent' in message_lower:
+            agent_name_match = re.search(r'install\s+(?:the\s+)?([a-z][a-z0-9\-_]*)\s+agent', message_lower)
+            if agent_name_match:
+                agent_name = agent_name_match.group(1)
+                if agent_name not in ['listener', 'platform', 'driver', 'fake']:
+                    return self._handle_install_agent_intent(agent_name)
             return self.call_function_tool("vctl_install_listener_agent", {})
+        
+        elif any(phrase in message_lower for phrase in [
+            'set up monitoring', 'setup monitoring', 'configure monitoring',
+            'start monitoring', 'enable monitoring', 'monitor'
+        ]):
+            return """To set up monitoring:
+
+1. **Install listener agent** (if not already installed):
+   - Say: "install listener"
+
+2. **Check agent status**:
+   - Say: "show agents" or "status"
+
+3. **View logs** to see monitored data:
+   - Say: "show logs" or "show fake driver logs"
+
+The listener agent will automatically monitor all platform messages including fake driver data.
+
+Would you like me to install the listener agent now?"""
+        
+        elif 'install' in message_lower and not any(char.isdigit() for char in message):
+            if any(word in message_lower for word in ['library', 'lib', 'fake', 'driver', 'monitoring', 'monitor']):
+                return """I can help you install:
+
+1. **Fake driver library**: Say "install fake driver library"
+2. **Platform driver**: Say "install platform driver" (already installed!)
+3. **Configure fake driver**: Say "configure fake driver"
+4. **Listener agent**: Say "install listener"
+
+What would you like to install?"""
             
 
         force_remove_patterns = [
@@ -2570,6 +2683,173 @@ You can use "vctl status" to see all agents and their tags."""
                    "Would you like me to:\n"
                    "• **Start VOLTTRON** - Launch the platform\n"
                    "• **Check system processes** - See what's running on your system")
+    
+    def _handle_install_listener_intent(self) -> str:
+        """Handle listener agent installation with intelligent prerequisite checking and multi-step workflow."""
+        from chat_app.volttron_commands import is_volttron_running, start_volttron, vctl_install_listener_agent
+        
+        
+        acknowledgment = "👍 **I understand you want to install the listener agent.**\n\n"
+        
+      
+        volttron_status = is_volttron_running()
+        is_running = volttron_status.lower() in ['yes', 'true'] or "✅" in volttron_status
+        
+        if not is_running:
+          
+            return (acknowledgment +
+                   "⚠️ **VOLTTRON is not running** - it needs to be running to install agents.\n\n"
+                   "🔄 **Multi-step solution:**\n"
+                   "I can do this for you:\n"
+                   "1. Start VOLTTRON platform\n"
+                   "2. Wait for it to initialize\n"
+                   "3. Install the listener agent\n\n"
+                   "💡 **Just say:** *\"yes, do it\"* or *\"start volttron then install listener\"*\n\n"
+                   "Or if you prefer to do it manually:\n"
+                   "• First say: *\"start volttron\"*\n"
+                   "• Then say: *\"install listener\"*")
+        
+       
+        return acknowledgment + vctl_install_listener_agent()
+    
+    def _handle_install_driver_intent(self) -> str:
+        """Handle platform driver installation with intelligent prerequisite checking."""
+        from chat_app.volttron_commands import is_volttron_running, vctl_install_platform_driver
+        
+       
+        acknowledgment = "👍 **I understand you want to install the platform driver.**\n\n"
+        
+ 
+        volttron_status = is_volttron_running()
+        is_running = volttron_status.lower() in ['yes', 'true'] or "✅" in volttron_status
+        
+        if not is_running:
+           
+            return (acknowledgment +
+                   "⚠️ **VOLTTRON is not running** - it needs to be running to install agents.\n\n"
+                   "🔄 **Multi-step solution:**\n"
+                   "I can do this for you:\n"
+                   "1. Start VOLTTRON platform\n"
+                   "2. Wait for it to initialize\n"
+                   "3. Install the platform driver\n\n"
+                   "💡 **Just say:** *\"yes, do it\"* or *\"start volttron then install platform driver\"*\n\n"
+                   "Or if you prefer to do it manually:\n"
+                   "• First say: *\"start volttron\"*\n"
+                   "• Then say: *\"install platform driver\"*")
+        
+      
+        return acknowledgment + vctl_install_platform_driver()
+    
+    def _handle_install_agent_intent(self, agent_name: str) -> str:
+        """Handle generic agent installation with intelligent prerequisite checking."""
+        from chat_app.volttron_commands import is_volttron_running, vctl_install_agent
+     
+        acknowledgment = f"👍 **I understand you want to install the {agent_name} agent.**\n\n"
+        
+     
+        volttron_status = is_volttron_running()
+        is_running = volttron_status.lower() in ['yes', 'true'] or "✅" in volttron_status
+        
+        if not is_running:
+         
+            return (acknowledgment +
+                   "⚠️ **VOLTTRON is not running** - it needs to be running to install agents.\n\n"
+                   "🔄 **Multi-step solution:**\n"
+                   "I can do this for you:\n"
+                   f"1. Start VOLTTRON platform\n"
+                   f"2. Wait for it to initialize\n"
+                   f"3. Install the {agent_name} agent\n\n"
+                   f"💡 **Just say:** *\"yes, do it\"* or *\"start volttron then install {agent_name}\"*\n\n"
+                   "Or if you prefer to do it manually:\n"
+                   "• First say: *\"start volttron\"*\n"
+                   f"• Then say: *\"install {agent_name}\"*")
+        
+        
+        return acknowledgment + vctl_install_agent(agent_name)
+    
+    def _execute_start_then_install_listener(self) -> str:
+        """Execute multi-step workflow: start VOLTTRON then install listener agent."""
+        from chat_app.volttron_commands import start_volttron, is_volttron_running, vctl_install_listener_agent
+        import time
+        
+        response = "🔄 **Executing multi-step workflow:**\n\n"
+        
+        
+        response += "**Step 1/3:** Starting VOLTTRON platform...\n"
+        start_result = start_volttron()
+        response += start_result + "\n\n"
+        
+       
+        if "❌" in start_result or "error" in start_result.lower():
+            return response + "⚠️ **Workflow stopped** - Could not start VOLTTRON. Please check the error above."
+        
+        
+        response += "**Step 2/3:** Waiting for VOLTTRON to initialize"
+        wait_time = int(os.getenv('VOLTTRON_STARTUP_WAIT', '5'))
+        for i in range(wait_time):
+            time.sleep(1)
+            response += "."
+        response += " Done!\n\n"
+        
+        
+        status = is_volttron_running()
+        if status.lower() not in ['yes', 'true'] and "✅" not in status:
+            return response + "⚠️ **Workflow stopped** - VOLTTRON didn't start properly. Try starting it manually."
+        
+       
+        response += "**Step 3/3:** Installing listener agent...\n"
+        install_result = vctl_install_listener_agent()
+        response += install_result + "\n\n"
+        
+        
+        if "✅" in install_result or "success" in install_result.lower():
+            response += "🎉 **Multi-step workflow completed successfully!**"
+        else:
+            response += "⚠️ **Workflow completed with issues** - Check the installation result above."
+        
+        return response
+    
+    def _execute_start_then_install_driver(self) -> str:
+        """Execute multi-step workflow: start VOLTTRON then install platform driver."""
+        from chat_app.volttron_commands import start_volttron, is_volttron_running, vctl_install_platform_driver
+        import time
+        
+        response = "🔄 **Executing multi-step workflow:**\n\n"
+        
+        
+        response += "**Step 1/3:** Starting VOLTTRON platform...\n"
+        start_result = start_volttron()
+        response += start_result + "\n\n"
+        
+        
+        if "❌" in start_result or "error" in start_result.lower():
+            return response + "⚠️ **Workflow stopped** - Could not start VOLTTRON. Please check the error above."
+        
+        
+        response += "**Step 2/3:** Waiting for VOLTTRON to initialize"
+        wait_time = int(os.getenv('VOLTTRON_STARTUP_WAIT', '5'))
+        for i in range(wait_time):
+            time.sleep(1)
+            response += "."
+        response += " Done!\n\n"
+        
+        
+        status = is_volttron_running()
+        if status.lower() not in ['yes', 'true'] and "✅" not in status:
+            return response + "⚠️ **Workflow stopped** - VOLTTRON didn't start properly. Try starting it manually."
+        
+        
+        response += "**Step 3/3:** Installing platform driver...\n"
+        install_result = vctl_install_platform_driver()
+        response += install_result + "\n\n"
+        
+        
+        if "✅" in install_result or "success" in install_result.lower():
+            response += "🎉 **Multi-step workflow completed successfully!**"
+        else:
+            response += "⚠️ **Workflow completed with issues** - Check the installation result above."
+        
+        return response
     
     def get_model_info(self) -> dict:
         """Get information about the current model."""
