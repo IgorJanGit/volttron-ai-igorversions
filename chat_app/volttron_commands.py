@@ -3696,49 +3696,164 @@ def smart_install_package(package_name, user_message=""):
     return search_result
 
 
+def vctl_install_lib(library_name, confirm=True):
+    """Install a VOLTTRON library package using pip (does not require VOLTTRON to be running).
+    
+    This is an alternative to 'vctl install-lib' that works without VOLTTRON running.
+    The 'vctl install-lib' command requires VOLTTRON to be running, but library installation
+    is just a pip install operation that can be done directly.
+    
+    Args:
+        library_name: Name of the library to install (e.g., 'volttron-lib-modbustk-driver')
+        confirm: Whether to confirm before installing (default: True)
+    
+    Returns:
+        str: Status message about the installation
+    """
+    try:
+        # Get pip command from the active virtual environment
+        pip_cmd, error_msg = get_pip_command_from_venv()
+        if not pip_cmd:
+            return error_msg or "❌ Pip command not found. Please ensure you're in a virtual environment."
+        
+        # Validate library name (should start with volttron-lib- or be a known VOLTTRON package)
+        if not library_name.startswith('volttron-'):
+            # Try to be helpful - prepend volttron-lib- if needed
+            if library_name.startswith('lib-'):
+                library_name = 'volttron-' + library_name
+            elif not library_name.startswith('volttron'):
+                library_name = 'volttron-lib-' + library_name
+        
+        print(f"📦 Installing VOLTTRON library: {library_name}...")
+        print(f"Using pip from: {pip_cmd}")
+        
+        # Install the library using pip
+        install_result = subprocess.run(
+            [pip_cmd, "install", library_name],
+            capture_output=True,
+            text=True,
+            timeout=180  # 3 minutes for library installation
+        )
+        
+        if install_result.returncode == 0:
+            # Check if it was already installed or newly installed
+            if "Requirement already satisfied" in install_result.stdout:
+                return f"""✅ **{library_name} is already installed**
+
+The library is ready to use! 
+
+**What's next?**
+• The library is installed in your virtual environment
+• You can now use this library with VOLTTRON agents
+• Check which libraries are installed: "list installed packages"
+
+No need to install it again - it's already there! 👍"""
+            else:
+                return f"""🎉 **Successfully installed {library_name}!**
+
+The library has been installed in your virtual environment.
+
+**Installation details:**
+• Package: {library_name}
+• Installed via: {pip_cmd}
+• Status: ✅ Ready to use
+
+**What's next?**
+• The library is now available for VOLTTRON agents to use
+• You can install agents that depend on this library
+• Check installation: `pip show {library_name}`
+
+Library installation complete! 🚀"""
+        else:
+            error_output = install_result.stderr or install_result.stdout or "Unknown error"
+            
+            # Try to provide helpful error messages
+            if "Could not find a version" in error_output or "No matching distribution" in error_output:
+                return f"""❌ **Package {library_name} not found**
+
+The package name might be incorrect or it might not be available on PyPI.
+
+**Common VOLTTRON libraries:**
+• volttron-lib-fake-driver (for testing/simulation)
+• volttron-lib-modbustk-driver (for Modbus devices)
+• volttron-lib-bacnet-driver (for BACnet devices)
+• volttron-platform-driver (platform driver agent)
+
+**Troubleshooting:**
+• Check the package name spelling
+• Verify the package exists on PyPI: https://pypi.org/search/?q={library_name}
+• Try searching: "what VOLTTRON libraries are available?"
+
+Error details:
+```
+{error_output}
+```"""
+            elif "permission denied" in error_output.lower():
+                return f"""❌ **Permission denied installing {library_name}**
+
+You don't have permission to install to this location.
+
+**Solutions:**
+• Make sure you're in a virtual environment: `source env/bin/activate`
+• Use a virtual environment instead of system Python
+• Don't use sudo with pip in virtual environments
+
+Error details:
+```
+{error_output}
+```"""
+            else:
+                return f"""❌ **Failed to install {library_name}**
+
+Error during installation:
+```
+{error_output}
+```
+
+**Troubleshooting:**
+• Make sure you're in the correct virtual environment
+• Check your internet connection
+• Try: `{pip_cmd} install {library_name}` manually
+• Verify the package name is correct
+
+Need help debugging this? Let me know!"""
+            
+    except subprocess.TimeoutExpired:
+        return f"""⏱️ **Installation timeout**
+
+The installation of {library_name} is taking longer than expected (3+ minutes).
+
+**Possible reasons:**
+• Large package with many dependencies
+• Slow internet connection
+• Package is being compiled from source
+
+**What to do:**
+• Wait a bit and check if installation completed: `pip show {library_name}`
+• Try manual installation: `{pip_cmd if pip_cmd else 'pip'} install {library_name}`
+• Check your internet connection
+
+The installation may still be running in the background."""
+    except Exception as e:
+        return f"""💥 **Error installing library**
+
+An unexpected error occurred: {str(e)}
+
+**Troubleshooting:**
+• Make sure you're in a virtual environment
+• Check that pip is working: `pip --version`
+• Try the manual command: `pip install {library_name}`
+
+If the problem persists, please share the full error message!"""
+
 def install_fake_driver_library():
     """Install the volttron-lib-fake-driver package for testing and development.
     
     Returns:
         str: Status message about the installation
     """
-    try:
-        pip_cmd = find_pip_command()
-        if not pip_cmd:
-            return "❌ Pip command not found. Please install pip first."
-        
-        package_name = "volttron-lib-fake-driver"
-        
-        print(f"📦 Installing {package_name}...")
-        install_result = subprocess.run(
-            [pip_cmd, "install", package_name],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        if install_result.returncode == 0:
-            if "Requirement already satisfied" in install_result.stdout:
-                return f"✅ **{package_name} is already installed.** Say 'configure fake driver' to set it up."
-            else:
-                return f"✅ **Successfully installed {package_name}!** Say 'configure fake driver' to set it up."
-        else:
-            error_output = install_result.stderr or install_result.stdout or "Unknown error"
-            return f"""❌ **Failed to install {package_name}**
-
-Error: {error_output}
-
-**Troubleshooting:**
-• Make sure you're in the correct virtual environment
-• Check your internet connection
-• Try: `pip install {package_name}` manually
-
-Need help? Let me know!"""
-            
-    except subprocess.TimeoutExpired:
-        return f"⏱️ Installation is taking longer than expected. The package might be large or your connection is slow."
-    except Exception as e:
-        return f"💥 Error installing fake driver library: {str(e)}"
+    # Use the generic vctl_install_lib function
+    return vctl_install_lib("volttron-lib-fake-driver")
 
 def configure_fake_driver():
     """Configure the fake driver with config files and start generating data.

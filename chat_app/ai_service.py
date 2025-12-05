@@ -23,7 +23,7 @@ from .volttron_commands import (
     vctl_install_agent, list_available_agents, verify_agent_uninstalled, install_volttron_with_pip,
     pip_uninstall_package, pip_install_package, pip_list_packages, install_fake_driver_library,
     show_fake_driver_logs, check_fake_driver_status, watch_fake_driver_logs, setup_fake_driver_complete,
-    configure_fake_driver, start_fake_driver,
+    configure_fake_driver, start_fake_driver, vctl_install_lib,
     vctl_start_all_agents, vctl_force_remove_agent, run_vctl_help, intelligent_vctl_command_discovery,
     smart_install_package, search_github_for_agent, install_agent_from_github,
     list_volttron_packages, list_running_agents, install_from_github_smart, list_all_installations,
@@ -222,6 +222,22 @@ if agent:
     def install_fake_driver_library_tool() -> str:
         """Install the volttron-lib-fake-driver package for testing and development."""
         return install_fake_driver_library()
+
+    @agent.tool_plain
+    def vctl_install_lib_tool(library_name: str, confirm: bool = True) -> str:
+        """Install a VOLTTRON library package using pip (works without VOLTTRON running).
+        
+        This is an alternative to 'vctl install-lib' that works without VOLTTRON running.
+        Use this when user wants to install any VOLTTRON library package.
+        
+        Args:
+            library_name: Name of the library to install (e.g., 'volttron-lib-modbustk-driver', 'volttron-lib-fake-driver')
+            confirm: Whether to confirm before installing (default: True)
+        
+        Returns:
+            Status message about the installation
+        """
+        return vctl_install_lib(library_name, confirm)
 
     @agent.tool_plain
     def show_fake_driver_logs_tool(num_lines: int = 50) -> str:
@@ -687,6 +703,28 @@ class AIService:
                         "type": "object",
                         "properties": {},
                         "required": []
+                    }
+                }
+            },
+            "vctl_install_lib": {
+                "function": vctl_install_lib,
+                "schema": {
+                    "name": "vctl_install_lib",
+                    "description": "Install a VOLTTRON library package using pip (works without VOLTTRON running). This is an alternative to 'vctl install-lib' command. Use this for installing any VOLTTRON library like volttron-lib-modbustk-driver, volttron-lib-bacnet-driver, etc.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "library_name": {
+                                "type": "string",
+                                "description": "Name of the VOLTTRON library to install (e.g., 'volttron-lib-modbustk-driver', 'volttron-lib-fake-driver')"
+                            },
+                            "confirm": {
+                                "type": "boolean",
+                                "description": "Whether to confirm before installing (default: True)",
+                                "default": True
+                            }
+                        },
+                        "required": ["library_name"]
                     }
                 }
             },
@@ -2153,6 +2191,51 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             'install volttron-lib-fake-driver', 'install fake-driver library'
         ]):
             return self.call_function_tool("install_fake_driver_library", {})
+        
+        # Handle vctl install-lib or generic library installation
+        elif any(phrase in message_lower for phrase in [
+            'vctl install-lib', 'vctl install lib', 'install-lib',
+            'install library', 'install a library', 'install volttron library'
+        ]) or (('install' in message_lower) and ('volttron-lib-' in message_lower)):
+            # Extract library name from message
+            library_name = None
+            
+            # Try to find library name in various formats
+            patterns = [
+                r'(?:install-lib|install\s+lib|install\s+library)\s+([a-z0-9\-_]+)',
+                r'install\s+(volttron-lib-[a-z0-9\-_]+)',
+                r'(volttron-lib-[a-z0-9\-_]+)',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, message_lower)
+                if match:
+                    library_name = match.group(1)
+                    break
+            
+            if library_name:
+                # Normalize library name
+                if not library_name.startswith('volttron-'):
+                    if library_name.startswith('lib-'):
+                        library_name = 'volttron-' + library_name
+                    else:
+                        library_name = 'volttron-lib-' + library_name
+                
+                return self.call_function_tool("vctl_install_lib", {"library_name": library_name})
+            else:
+                return """I can help you install VOLTTRON libraries!
+
+To install a library, please specify the library name. For example:
+• "install library volttron-lib-modbustk-driver"
+• "vctl install-lib volttron-lib-bacnet-driver"
+• "install volttron-lib-fake-driver"
+
+**Common VOLTTRON libraries:**
+• volttron-lib-fake-driver (for testing/simulation)
+• volttron-lib-modbustk-driver (for Modbus devices)
+• volttron-lib-bacnet-driver (for BACnet devices)
+
+What library would you like to install?"""
         
         elif any(phrase in message_lower for phrase in [
             'configure fake driver', 'config fake driver', 'setup fake driver',
