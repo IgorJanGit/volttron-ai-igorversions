@@ -225,10 +225,10 @@ if agent:
 
     @agent.tool_plain
     def vctl_install_lib_tool(library_name: str, confirm: bool = True) -> str:
-        """Install a VOLTTRON library package using pip (works without VOLTTRON running).
+        """Install a VOLTTRON library package using Poetry (official VOLTTRON-core method).
         
-        This is an alternative to 'vctl install-lib' that works without VOLTTRON running.
-        Use this when user wants to install any VOLTTRON library package.
+        This mimics the official 'vctl install-lib' from eclipse-volttron/volttron-core#221.
+        Uses Poetry to install libraries in VOLTTRON_HOME, with pip fallback if Poetry is not available.
         
         Args:
             library_name: Name of the library to install (e.g., 'volttron-lib-modbustk-driver', 'volttron-lib-fake-driver')
@@ -710,7 +710,7 @@ class AIService:
                 "function": vctl_install_lib,
                 "schema": {
                     "name": "vctl_install_lib",
-                    "description": "Install a VOLTTRON library package using pip (works without VOLTTRON running). This is an alternative to 'vctl install-lib' command. Use this for installing any VOLTTRON library like volttron-lib-modbustk-driver, volttron-lib-bacnet-driver, etc.",
+                    "description": "Install a VOLTTRON library package using Poetry (official VOLTTRON-core method from issue #221). Uses Poetry to manage dependencies in VOLTTRON_HOME, falls back to pip if Poetry is not available. Works without VOLTTRON running.",
                     "parameters": {
                         "type": "object",
                         "properties": {

@@ -12,24 +12,37 @@ Example command that was failing:
 vctl install-lib volttron-lib-modbustk-driver --confirm
 ```
 
-However, library installation is fundamentally a `pip install` operation that doesn't actually require VOLTTRON to be running.
+However, library installation doesn't necessarily require VOLTTRON to be running.
 
 ## Solution Implemented
 
-Created a new function `vctl_install_lib()` that bypasses the VOLTTRON platform requirement and uses pip directly to install VOLTTRON libraries.
+Created a new function `vctl_install_lib()` that implements the official VOLTTRON-core library installation method from [eclipse-volttron/volttron-core#221](https://github.com/eclipse-volttron/volttron-core/issues/221).
+
+### Official VOLTTRON-core Method
+
+The implementation follows the official VOLTTRON-core approach:
+- Uses **Poetry** to install libraries in `VOLTTRON_HOME`
+- Runs: `cd $VOLTTRON_HOME; poetry add <library>`
+- Tracks dependencies in `pyproject.toml`
+- Falls back to pip if Poetry is not available
+
+This ensures compatibility with the modular VOLTTRON platform (v2.0.0rc0+).
 
 ### Key Features
 
-1. **No VOLTTRON Required**: Works without VOLTTRON running
-2. **Intelligent Library Name Normalization**: Automatically converts partial names to full package names
+1. **Poetry Integration**: Uses the official Poetry-based method for dependency management
+2. **VOLTTRON_HOME Management**: Automatically initializes pyproject.toml if needed
+3. **Pip Fallback**: Falls back to pip if Poetry is not installed
+4. **Intelligent Library Name Normalization**: Automatically converts partial names to full package names
    - `modbustk-driver` → `volttron-lib-modbustk-driver`
    - `lib-modbustk-driver` → `volttron-lib-modbustk-driver`
-3. **Comprehensive Error Handling**: Detects and provides helpful messages for:
-   - Package not found
-   - Permission errors
-   - Network timeouts
-   - Virtual environment issues
-4. **AI Integration**: Natural language commands are automatically detected and handled
+5. **Comprehensive Error Handling**: Detects and provides helpful messages for common issues
+6. **AI Integration**: Natural language commands are automatically detected and handled
+
+### References
+
+- [eclipse-volttron/volttron-core#221](https://github.com/eclipse-volttron/volttron-core/issues/221) - Add vctl install-lib
+- [eclipse-volttron/volttron-core#141](https://github.com/eclipse-volttron/volttron-core/issues/141) - Original Poetry integration discussion
 
 ### Files Modified
 

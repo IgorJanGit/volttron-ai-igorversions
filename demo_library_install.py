@@ -18,7 +18,8 @@ def demo_library_installation():
     print("   Error: 'VOLTTRON is not running. This command requires VOLTTRON platform to be running.'")
     
     print("\n✨ Solution:")
-    print("   Use vctl_install_lib() which uses pip directly (no VOLTTRON required)")
+    print("   Use vctl_install_lib() which uses Poetry (official VOLTTRON-core method)")
+    print("   Reference: https://github.com/eclipse-volttron/volttron-core/issues/221")
     
     print("\n" + "=" * 80)
     print("How It Works")
@@ -35,13 +36,16 @@ def demo_library_installation():
     print("   - Normalizes name if needed (e.g., 'modbustk-driver' → 'volttron-lib-modbustk-driver')")
     
     print("\n3️⃣  Calls vctl_install_lib():")
-    print("   - Gets pip from active virtual environment")
-    print("   - Runs: pip install volttron-lib-modbustk-driver")
+    print("   - Gets VOLTTRON_HOME directory")
+    print("   - Checks if Poetry is available")
+    print("   - If Poetry exists: Runs 'cd $VOLTTRON_HOME && poetry add <library>' (official method)")
+    print("   - If Poetry missing: Falls back to pip install")
     print("   - Returns user-friendly status message")
     
     print("\n4️⃣  User gets response:")
     print("   '🎉 Successfully installed volttron-lib-modbustk-driver!'")
-    print("   'The library has been installed in your virtual environment.'")
+    print("   'The library has been installed using Poetry (official VOLTTRON method).'")
+    print("   'Tracked in: $VOLTTRON_HOME/pyproject.toml'")
     
     print("\n" + "=" * 80)
     print("Supported Commands")
@@ -89,10 +93,13 @@ def demo_library_installation():
     print("=" * 80)
     
     benefits = [
+        "Uses official VOLTTRON-core Poetry method (from issue #221)",
         "No need to start VOLTTRON first",
+        "Dependencies tracked in pyproject.toml",
         "Automatic library name normalization",
         "Clear, helpful error messages",
         "Natural language support",
+        "Falls back to pip if Poetry not available",
         "Well-tested and secure",
     ]
     
