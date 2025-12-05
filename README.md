@@ -132,6 +132,20 @@ The AI assistant can control VOLTTRON platform with natural language:
 - **"Check agent health"** → AI discovers and runs `vctl health`
 - **"List agent tags"** → AI discovers and runs `vctl tag`
 - **"Show peer list"** → AI discovers and runs `vctl peerlist`
+- **"Install library volttron-lib-modbustk-driver"** → Installs VOLTTRON libraries (no VOLTTRON running required)
+
+**Library Installation:**
+The AI can install VOLTTRON libraries using pip directly, which works even when VOLTTRON is not running. This is an alternative to the `vctl install-lib` command which requires VOLTTRON to be running.
+
+Examples:
+- **"Install library volttron-lib-modbustk-driver"**
+- **"vctl install-lib volttron-lib-fake-driver"** (AI will use pip instead)
+- **"Install volttron-lib-bacnet-driver"**
+
+Common VOLTTRON libraries:
+- `volttron-lib-fake-driver` - For testing and simulation
+- `volttron-lib-modbustk-driver` - For Modbus devices
+- `volttron-lib-bacnet-driver` - For BACnet devices
 
 **Automatic VOLTTRON Detection:**
 The application automatically detects VOLTTRON installations in common locations:
