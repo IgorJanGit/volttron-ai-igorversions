@@ -52,7 +52,7 @@ def test_docstring():
         assert "VOLTTRON library" in doc or "library package" in doc, "Docstring doesn't mention library"
         
         print(f"  ✅ Docstring is present")
-        print(f"  First line: {doc.split(chr(10))[0].strip()}")
+        print(f"  First line: {doc.split('\n')[0].strip()}")
         return True
     except Exception as e:
         print(f"  ❌ Docstring test failed: {e}")

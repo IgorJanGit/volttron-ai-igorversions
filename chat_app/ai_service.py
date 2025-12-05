@@ -2200,21 +2200,24 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             # Extract library name from message
             library_name = None
             
-            # Try to find library name in various formats
+            # Try to find library name in various formats (case-insensitive)
             patterns = [
-                r'(?:install-lib|install\s+lib|install\s+library)\s+([a-z0-9\-_]+)',
-                r'install\s+(volttron-lib-[a-z0-9\-_]+)',
-                r'(volttron-lib-[a-z0-9\-_]+)',
+                r'(?:install-lib|install\s+lib|install\s+library)\s+([a-zA-Z0-9\-_]+)',
+                r'install\s+(volttron-lib-[a-zA-Z0-9\-_]+)',
+                r'(volttron-lib-[a-zA-Z0-9\-_]+)',
             ]
             
             for pattern in patterns:
-                match = re.search(pattern, message_lower)
+                match = re.search(pattern, message_lower, re.IGNORECASE)
                 if match:
                     library_name = match.group(1)
                     break
             
             if library_name:
-                # Normalize library name
+                # Normalize library name to lowercase for consistency
+                library_name = library_name.lower()
+                
+                # Normalize library name prefix
                 if not library_name.startswith('volttron-'):
                     if library_name.startswith('lib-'):
                         library_name = 'volttron-' + library_name

@@ -3705,7 +3705,7 @@ def vctl_install_lib(library_name, confirm=True):
     
     Args:
         library_name: Name of the library to install (e.g., 'volttron-lib-modbustk-driver')
-        confirm: Whether to confirm before installing (default: True)
+        confirm: Whether to confirm before installing (default: True, currently not implemented)
     
     Returns:
         str: Status message about the installation
@@ -3724,8 +3724,9 @@ def vctl_install_lib(library_name, confirm=True):
             elif not library_name.startswith('volttron'):
                 library_name = 'volttron-lib-' + library_name
         
-        print(f"📦 Installing VOLTTRON library: {library_name}...")
-        print(f"Using pip from: {pip_cmd}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Installing VOLTTRON library: {library_name} using pip: {pip_cmd}")
         
         # Install the library using pip
         install_result = subprocess.run(
