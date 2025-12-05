@@ -3696,49 +3696,278 @@ def smart_install_package(package_name, user_message=""):
     return search_result
 
 
+def vctl_install_lib(library_name, confirm=True):
+    """Install a VOLTTRON library package using Poetry (mimics official vctl install-lib from VOLTTRON-core).
+    
+    This implementation follows the official VOLTTRON-core vctl install-lib command from issue #221.
+    It uses Poetry to install libraries in VOLTTRON_HOME, ensuring proper dependency management.
+    
+    The official implementation runs: `cd $VOLTTRON_HOME; poetry add <library>`
+    This ensures libraries are tracked in pyproject.toml and managed by Poetry.
+    
+    Args:
+        library_name: Name of the library to install (e.g., 'volttron-lib-modbustk-driver')
+        confirm: Whether to confirm before installing (default: True, currently not implemented)
+    
+    Returns:
+        str: Status message about the installation
+        
+    References:
+        - https://github.com/eclipse-volttron/volttron-core/issues/221
+        - https://github.com/eclipse-volttron/volttron-core/issues/141
+    """
+    try:
+        # Get VOLTTRON_HOME directory
+        volttron_home = get_volttron_home()
+        
+        # Validate library name (should start with volttron-lib- or be a known VOLTTRON package)
+        if not library_name.startswith('volttron-'):
+            # Try to be helpful - prepend volttron-lib- if needed
+            if library_name.startswith('lib-'):
+                library_name = 'volttron-' + library_name
+            elif not library_name.startswith('volttron'):
+                library_name = 'volttron-lib-' + library_name
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Installing VOLTTRON library: {library_name} using Poetry in {volttron_home}")
+        
+        # Check if poetry is available
+        poetry_path = shutil.which('poetry')
+        
+        if not poetry_path:
+            # Poetry not found, fall back to pip with a warning
+            logger.warning("Poetry not found, falling back to pip installation")
+            pip_cmd, error_msg = get_pip_command_from_venv()
+            if not pip_cmd:
+                return f"""❌ **Neither Poetry nor pip found**
+
+To use the official VOLTTRON library installation method, install Poetry:
+```bash
+pip install poetry
+```
+
+Alternatively, pip is needed for fallback installation.
+
+**About Poetry in VOLTTRON:**
+The official VOLTTRON-core uses Poetry to manage dependencies in `VOLTTRON_HOME/pyproject.toml`.
+This ensures all packages are compatible and versions are tracked properly.
+
+Reference: https://github.com/eclipse-volttron/volttron-core/issues/221"""
+            
+            # Fall back to pip installation
+            install_result = subprocess.run(
+                [pip_cmd, "install", library_name],
+                capture_output=True,
+                text=True,
+                timeout=180
+            )
+            
+            if install_result.returncode == 0:
+                return f"""⚠️ **{library_name} installed via pip (fallback)**
+
+Poetry was not found, so the library was installed using pip instead.
+
+**Note:** The official VOLTTRON-core uses Poetry for library management.
+To use the official method, install Poetry:
+```bash
+pip install poetry
+```
+
+**Installation details:**
+• Package: {library_name}
+• Method: pip (fallback)
+• Status: ✅ Installed
+
+**What's next?**
+• The library is available for VOLTTRON agents
+• Consider installing Poetry for better dependency management"""
+            else:
+                error_output = install_result.stderr or install_result.stdout or "Unknown error"
+                return f"""❌ **Failed to install {library_name}**
+
+Error during pip installation (fallback):
+```
+{error_output}
+```
+
+**Try installing Poetry for the official installation method:**
+```bash
+pip install poetry
+```"""
+        
+        # Poetry is available - use the official method
+        # This mimics: cd $VOLTTRON_HOME; poetry add <library>
+        
+        # Validate library name for security (prevent shell injection)
+        import re
+        if not re.match(r'^[a-zA-Z0-9\-_.]+$', library_name):
+            return f"""❌ **Invalid library name: {library_name}**
+
+Library names should only contain letters, numbers, hyphens, underscores, and dots.
+
+**Examples of valid library names:**
+• volttron-lib-modbustk-driver
+• volttron-lib-fake-driver
+• volttron-lib-bacnet-driver"""
+        
+        # Check if VOLTTRON_HOME has a pyproject.toml
+        pyproject_path = os.path.join(volttron_home, 'pyproject.toml')
+        if not os.path.exists(pyproject_path):
+            # Initialize a basic Poetry project in VOLTTRON_HOME
+            logger.info(f"Initializing Poetry project in {volttron_home}")
+            
+            # Detect current Python version
+            import sys
+            python_version = f"^{sys.version_info.major}.{sys.version_info.minor}"
+            
+            # Create a minimal pyproject.toml
+            minimal_pyproject = f"""[tool.poetry]
+name = "volttron-home"
+version = "0.1.0"
+description = "VOLTTRON Home Environment"
+authors = ["VOLTTRON User"]
+
+[tool.poetry.dependencies]
+python = "{python_version}"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+"""
+            os.makedirs(volttron_home, exist_ok=True)
+            with open(pyproject_path, 'w') as f:
+                f.write(minimal_pyproject)
+            
+            logger.info(f"Created {pyproject_path}")
+        
+        # Run poetry add in VOLTTRON_HOME
+        logger.info(f"Running: cd {volttron_home} && poetry add {library_name}")
+        
+        install_result = subprocess.run(
+            ['poetry', 'add', library_name],
+            capture_output=True,
+            text=True,
+            cwd=volttron_home,
+            timeout=300  # 5 minutes for Poetry operations
+        )
+        
+        if install_result.returncode == 0:
+            return f"""🎉 **Successfully installed {library_name}!**
+
+The library has been installed using Poetry (official VOLTTRON method).
+
+**Installation details:**
+• Package: {library_name}
+• Method: Poetry (official)
+• Location: {volttron_home}
+• Tracked in: {pyproject_path}
+
+**What Poetry did:**
+• Added {library_name} to dependencies
+• Updated pyproject.toml
+• Resolved and locked all dependencies
+• Installed the package in the environment
+
+**What's next?**
+• The library is now available for VOLTTRON agents
+• All dependencies are tracked in pyproject.toml
+• Use `poetry show` in {volttron_home} to see installed packages
+
+Library installation complete! 🚀
+
+Reference: https://github.com/eclipse-volttron/volttron-core/issues/221"""
+        else:
+            error_output = install_result.stderr or install_result.stdout or "Unknown error"
+            
+            # Try to provide helpful error messages
+            if "Could not find" in error_output or "does not exist" in error_output:
+                return f"""❌ **Package {library_name} not found**
+
+Poetry could not find the package on PyPI.
+
+**Common VOLTTRON libraries:**
+• volttron-lib-fake-driver (for testing/simulation)
+• volttron-lib-modbustk-driver (for Modbus devices)
+• volttron-lib-bacnet-driver (for BACnet devices)
+
+**Troubleshooting:**
+• Check the package name spelling
+• Verify the package exists: https://pypi.org/search/?q={library_name}
+• Make sure you're using a library compatible with your VOLTTRON version
+
+Error details:
+```
+{error_output}
+```"""
+            else:
+                return f"""❌ **Failed to install {library_name}**
+
+Poetry installation failed.
+
+Error:
+```
+{error_output}
+```
+
+**Troubleshooting:**
+• Check internet connection
+• Verify VOLTTRON_HOME is set correctly: {volttron_home}
+• Try manual installation: `cd {volttron_home} && poetry add {library_name}`
+• Check Poetry installation: `poetry --version`
+
+**Alternative:** You can also install directly with pip:
+```bash
+pip install {library_name}
+```
+
+Need help debugging this? Let me know!"""
+            
+    except subprocess.TimeoutExpired:
+        # Use a variable for the fallback path
+        vhome_display = volttron_home if 'volttron_home' in locals() else '$VOLTTRON_HOME'
+        
+        return f"""⏱️ **Installation timeout**
+
+Poetry is taking longer than expected to install {library_name} (5+ minutes).
+
+**Possible reasons:**
+• Large package with many dependencies
+• Poetry is resolving complex dependency conflicts
+• Slow internet connection
+
+**What to do:**
+• Wait a bit and check: `cd {vhome_display} && poetry show | grep {library_name}`
+• Try manual installation: `cd {vhome_display} && poetry add {library_name}`
+• Consider using pip as fallback: `pip install {library_name}`
+
+The installation may still be running in the background."""
+    except Exception as e:
+        return f"""💥 **Error installing library**
+
+An unexpected error occurred: {str(e)}
+
+**Troubleshooting:**
+• Make sure Poetry is installed: `pip install poetry`
+• Check VOLTTRON_HOME is set correctly
+• Verify you're in a virtual environment
+• Try: `cd $VOLTTRON_HOME && poetry add {library_name}`
+
+**Alternative:** Install with pip:
+```bash
+pip install {library_name}
+```
+
+If the problem persists, please share the full error message!"""
+
 def install_fake_driver_library():
     """Install the volttron-lib-fake-driver package for testing and development.
     
     Returns:
         str: Status message about the installation
     """
-    try:
-        pip_cmd = find_pip_command()
-        if not pip_cmd:
-            return "❌ Pip command not found. Please install pip first."
-        
-        package_name = "volttron-lib-fake-driver"
-        
-        print(f"📦 Installing {package_name}...")
-        install_result = subprocess.run(
-            [pip_cmd, "install", package_name],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        if install_result.returncode == 0:
-            if "Requirement already satisfied" in install_result.stdout:
-                return f"✅ **{package_name} is already installed.** Say 'configure fake driver' to set it up."
-            else:
-                return f"✅ **Successfully installed {package_name}!** Say 'configure fake driver' to set it up."
-        else:
-            error_output = install_result.stderr or install_result.stdout or "Unknown error"
-            return f"""❌ **Failed to install {package_name}**
-
-Error: {error_output}
-
-**Troubleshooting:**
-• Make sure you're in the correct virtual environment
-• Check your internet connection
-• Try: `pip install {package_name}` manually
-
-Need help? Let me know!"""
-            
-    except subprocess.TimeoutExpired:
-        return f"⏱️ Installation is taking longer than expected. The package might be large or your connection is slow."
-    except Exception as e:
-        return f"💥 Error installing fake driver library: {str(e)}"
+    # Use the generic vctl_install_lib function
+    return vctl_install_lib("volttron-lib-fake-driver")
 
 def configure_fake_driver():
     """Configure the fake driver with config files and start generating data.

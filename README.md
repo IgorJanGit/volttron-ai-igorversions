@@ -132,6 +132,30 @@ The AI assistant can control VOLTTRON platform with natural language:
 - **"Check agent health"** → AI discovers and runs `vctl health`
 - **"List agent tags"** → AI discovers and runs `vctl tag`
 - **"Show peer list"** → AI discovers and runs `vctl peerlist`
+- **"Install library volttron-lib-modbustk-driver"** → Installs VOLTTRON libraries (no VOLTTRON running required)
+
+**Library Installation:**
+The AI can install VOLTTRON libraries using Poetry (the official VOLTTRON-core method). This mimics the official `vctl install-lib` command from [eclipse-volttron/volttron-core#221](https://github.com/eclipse-volttron/volttron-core/issues/221).
+
+**How it works:**
+- Uses Poetry to install libraries in `VOLTTRON_HOME` (official method)
+- Falls back to pip if Poetry is not installed
+- Tracks dependencies in `pyproject.toml` (when using Poetry)
+- Works even when VOLTTRON is not running
+
+Examples:
+- **"Install library volttron-lib-modbustk-driver"**
+- **"vctl install-lib volttron-lib-fake-driver"**
+- **"Install volttron-lib-bacnet-driver"**
+
+Common VOLTTRON libraries:
+- `volttron-lib-fake-driver` - For testing and simulation
+- `volttron-lib-modbustk-driver` - For Modbus devices
+- `volttron-lib-bacnet-driver` - For BACnet devices
+
+**Requirements:**
+- Poetry is recommended for official VOLTTRON-core compatibility: `pip install poetry`
+- Falls back to pip if Poetry is not available
 
 **Automatic VOLTTRON Detection:**
 The application automatically detects VOLTTRON installations in common locations:
