@@ -4,7 +4,15 @@ Demo script showing how the vctl_install_lib feature works
 
 This demonstrates the solution to the issue where users couldn't install
 VOLTTRON libraries because vctl install-lib requires VOLTTRON to be running.
+
+References:
+- https://github.com/eclipse-volttron/volttron-core/issues/221
+- https://github.com/eclipse-volttron/volttron-core/issues/141
 """
+
+# GitHub issue URLs
+VOLTTRON_CORE_ISSUE_221 = "https://github.com/eclipse-volttron/volttron-core/issues/221"
+VOLTTRON_CORE_ISSUE_141 = "https://github.com/eclipse-volttron/volttron-core/issues/141"
 
 def demo_library_installation():
     """Demonstrate the library installation feature"""
@@ -19,7 +27,7 @@ def demo_library_installation():
     
     print("\n✨ Solution:")
     print("   Use vctl_install_lib() which uses Poetry (official VOLTTRON-core method)")
-    print("   Reference: https://github.com/eclipse-volttron/volttron-core/issues/221")
+    print(f"   Reference: {VOLTTRON_CORE_ISSUE_221}")
     
     print("\n" + "=" * 80)
     print("How It Works")

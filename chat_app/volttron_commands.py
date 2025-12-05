@@ -3733,14 +3733,9 @@ def vctl_install_lib(library_name, confirm=True):
         logger.info(f"Installing VOLTTRON library: {library_name} using Poetry in {volttron_home}")
         
         # Check if poetry is available
-        poetry_check = subprocess.run(
-            ['which', 'poetry'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        poetry_path = shutil.which('poetry')
         
-        if poetry_check.returncode != 0:
+        if not poetry_path:
             # Poetry not found, fall back to pip with a warning
             logger.warning("Poetry not found, falling back to pip installation")
             pip_cmd, error_msg = get_pip_command_from_venv()
@@ -3804,11 +3799,27 @@ pip install poetry
         # Poetry is available - use the official method
         # This mimics: cd $VOLTTRON_HOME; poetry add <library>
         
+        # Validate library name for security (prevent shell injection)
+        import re
+        if not re.match(r'^[a-zA-Z0-9\-_.]+$', library_name):
+            return f"""❌ **Invalid library name: {library_name}**
+
+Library names should only contain letters, numbers, hyphens, underscores, and dots.
+
+**Examples of valid library names:**
+• volttron-lib-modbustk-driver
+• volttron-lib-fake-driver
+• volttron-lib-bacnet-driver"""
+        
         # Check if VOLTTRON_HOME has a pyproject.toml
         pyproject_path = os.path.join(volttron_home, 'pyproject.toml')
         if not os.path.exists(pyproject_path):
             # Initialize a basic Poetry project in VOLTTRON_HOME
             logger.info(f"Initializing Poetry project in {volttron_home}")
+            
+            # Detect current Python version
+            import sys
+            python_version = f"^{sys.version_info.major}.{sys.version_info.minor}"
             
             # Create a minimal pyproject.toml
             minimal_pyproject = f"""[tool.poetry]
@@ -3818,7 +3829,7 @@ description = "VOLTTRON Home Environment"
 authors = ["VOLTTRON User"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "{python_version}"
 
 [build-system]
 requires = ["poetry-core"]
@@ -3913,6 +3924,9 @@ pip install {library_name}
 Need help debugging this? Let me know!"""
             
     except subprocess.TimeoutExpired:
+        # Use a variable for the fallback path
+        vhome_display = volttron_home if 'volttron_home' in locals() else '$VOLTTRON_HOME'
+        
         return f"""⏱️ **Installation timeout**
 
 Poetry is taking longer than expected to install {library_name} (5+ minutes).
@@ -3923,8 +3937,8 @@ Poetry is taking longer than expected to install {library_name} (5+ minutes).
 • Slow internet connection
 
 **What to do:**
-• Wait a bit and check: `cd {volttron_home if 'volttron_home' in locals() else '$VOLTTRON_HOME'} && poetry show | grep {library_name}`
-• Try manual installation: `cd {volttron_home if 'volttron_home' in locals() else '$VOLTTRON_HOME'} && poetry add {library_name}`
+• Wait a bit and check: `cd {vhome_display} && poetry show | grep {library_name}`
+• Try manual installation: `cd {vhome_display} && poetry add {library_name}`
 • Consider using pip as fallback: `pip install {library_name}`
 
 The installation may still be running in the background."""
