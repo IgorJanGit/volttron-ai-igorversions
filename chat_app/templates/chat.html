@@ -206,6 +206,25 @@
         let historyIndex = -1;
         let currentDraft = '';
 
+        // Fetch and update VOLTTRON version info
+        async function updateVersionInfo() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                const modelInfo = document.querySelector('.model-info');
+                if (data.volttron && data.volttron !== 'Unknown') {
+                    modelInfo.textContent = `VOLTTRON: ${data.volttron} | Model: ${data.model}`;
+                } else {
+                    modelInfo.textContent = `Model: ${data.model}`;
+                }
+            } catch (error) {
+                console.error('Failed to fetch version info:', error);
+            }
+        }
+
+        // Update version info on load
+        updateVersionInfo();
+
         function addMessage(content, isUser = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;

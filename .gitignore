@@ -27,6 +27,9 @@ MANIFEST
 # Documentation (work in progress)
 PYDANTIC_AI_IMPLEMENTATION.md
 
+# Tests
+tests/
+
 # Environment variables
 .env
 

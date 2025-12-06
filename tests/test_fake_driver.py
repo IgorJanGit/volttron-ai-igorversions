@@ -68,16 +68,16 @@ class TestFakeDriverInstallation(unittest.TestCase):
                 self.assertIsNotNone(result)
                 print(f"  ✅ Already installed handled correctly")
     
-    def test_install_fake_driver_library_no_pip(self):
-        """Test error handling when pip is not available."""
-        print("\n🧪 Testing fake driver install without pip...")
+    def test_install_fake_driver_library_no_vctl(self):
+        """Test error handling when vctl is not available."""
+        print("\n🧪 Testing fake driver install without vctl...")
         
-        with patch('chat_app.volttron_commands.find_pip_command', return_value=None):
+        with patch('chat_app.volttron_commands.find_vctl_command', return_value=None):
             result = volttron_commands.install_fake_driver_library()
             
             self.assertIsNotNone(result)
-            self.assertIn('pip', result.lower())
-            print(f"  ✅ No pip error handled correctly")
+            self.assertIn('vctl', result.lower())
+            print(f"  ✅ No vctl error handled correctly")
 
 
 class TestFakeDriverConfiguration(unittest.TestCase):
