@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import os
+import subprocess
 
 from .ai_service import AIService
 
@@ -56,7 +57,43 @@ def create_app(model_name: str) -> FastAPI:
     @app.get("/health")
     async def health_check():
         """Health check endpoint."""
-        return {"status": "healthy", "model": model_name}
+        volttron_version = "Unknown"
+        
+        possible_pips = [
+            os.path.expanduser("~/volttron-v11-py311/bin/pip"),
+            os.path.expanduser("~/volttron-fresh/venv-fresh/bin/pip"),
+        ]
+        
+        for pip_path in possible_pips:
+            if os.path.exists(pip_path):
+                try:
+                    for package in ["volttron-core", "volttron"]:
+                        result = subprocess.run(
+                            [pip_path, "show", package],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        
+                        if result.returncode == 0 and result.stdout:
+                            for line in result.stdout.split("\n"):
+                                if line.startswith("Version:"):
+                                    volttron_version = line.split(":", 1)[1].strip()
+                                    break
+                            
+                            if volttron_version != "Unknown":
+                                break
+                    
+                    if volttron_version != "Unknown":
+                        break
+                except Exception:
+                    continue
+        
+        return {
+            "status": "healthy",
+            "volttron": volttron_version,
+            "model": model_name
+        }
     
     @app.get("/models")
     async def get_available_models():

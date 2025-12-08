@@ -60,39 +60,50 @@ def get_pip_command_from_venv():
 
 AVAILABLE_AGENTS = {
     'listener': {
-        'package': 'volttron-listener-agent',  # Updated to the new package name
-        'alt_package': 'volttron-listener',    # Alternative/legacy package name
+        'package': 'volttron-listener',
         'vip_identity': 'listener',
         'description': 'Simple listener agent that monitors all platform messages',
-        'category': 'Core'
+        'category': 'Core',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-listener.git'
     },
     'platform-driver': {
         'package': 'volttron-platform-driver', 
         'vip_identity': 'platform.driver',
         'description': 'Platform driver for device communication',
-        'category': 'Driver'
+        'category': 'Driver',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-platform-driver.git'
     },
     
     'sqlite-historian': {
         'package': 'volttron-sqlite-historian',
         'vip_identity': 'sqlite_historian',
         'description': 'SQLite database historian for storing data',
-        'category': 'Historian'
+        'category': 'Historian',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-sqlite-historian.git'
     },
     'postgresql-historian': {
         'package': 'volttron-postgresql-historian',
         'vip_identity': 'postgresql_historian', 
         'description': 'PostgreSQL database historian for storing data',
-        'category': 'Historian'
+        'category': 'Historian',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-postgresql-historian.git'
     },
     
     'fake-driver': {
         'package': 'volttron-lib-fake-driver',
         'vip_identity': 'fake_driver',
         'description': 'Fake driver library for testing and development',
-        'category': 'Driver Library'
+        'category': 'Driver Library',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-lib-fake-driver.git'
     },
     
+    'csv-driver': {
+        'package': 'volttron-csv-driver',
+        'vip_identity': 'csv_driver',
+        'description': 'CSV driver agent for reading data from CSV files',
+        'category': 'Data Analysis',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-csv-driver.git'
+    },
     
 }
 
@@ -130,113 +141,128 @@ def format_volttron_warnings(stderr_output):
         print(f"Error in format_volttron_warnings: {str(e)}")
         return "" 
 
-def find_volttron_command():
-    """Find volttron command in various locations, prioritizing running instance."""
+def discover_volttron_installations():
+    """Discover all VOLTTRON installations in the user's environment."""
+    installations = []
     
-
-    try:
-        import psutil
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
-
-                    cmd_path = proc.cmdline()[0] if proc.cmdline() else None
-                    if cmd_path and os.path.exists(cmd_path) and 'volttron' in cmd_path:
-                        print(f"DEBUG: Found volttron from running process: {cmd_path}")
-                        return cmd_path
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except ImportError:
-
-        pass
-    
-
-    fresh_volttron = os.path.expanduser("~/volttron-fresh/venv-fresh/bin/volttron")
-    if os.path.exists(fresh_volttron):
-        print(f"DEBUG: Using volttron from fresh installation: {fresh_volttron}")
-        return fresh_volttron
-    
-    
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_env_volttron = os.path.join(os.path.dirname(current_dir), "env", "bin", "volttron")
-    if os.path.exists(project_env_volttron):
-        print(f"DEBUG: Using volttron from project env: {project_env_volttron}")
-        return project_env_volttron
-    
-
-    volttron_cmd = shutil.which("volttron")
-    if volttron_cmd:
-        print(f"DEBUG: Using volttron from PATH: {volttron_cmd}")
-        return volttron_cmd
-
-    possible_paths = [
-
-        os.path.join(os.getenv("VIRTUAL_ENV", ""), "bin", "volttron"),
-
-        os.path.expanduser("~/volttron/bin/volttron"),
-        os.path.expanduser("~/VOLTTRON/bin/volttron"),
-        os.path.expanduser("~/volttron-env/bin/volttron"),
-        os.path.expanduser("~/VOLTTRON/env/bin/volttron"),
-        os.path.expanduser("~/VOLTTRON/AI/env/bin/volttron"),
-
-        os.path.expanduser("~/volttron-fresh/venv-fresh/bin/volttron"),
-        os.path.expanduser("~/volttron-fresh/env/bin/volttron"),
-
+    search_patterns = [
+        os.path.expanduser("~/volttron*/bin/volttron"),
+        os.path.expanduser("~/volttron*/venv*/bin/volttron"),
+        os.path.expanduser("~/volttron*/env/bin/volttron"),
+        os.path.expanduser("~/.local/bin/volttron"),
         "/opt/volttron/bin/volttron",
         "/usr/local/bin/volttron",
         "/usr/bin/volttron"
     ]
     
-    for path in possible_paths:
-        if path and os.path.isfile(path) and os.access(path, os.X_OK):
-            return path
+    import glob
+    for pattern in search_patterns:
+        for path in glob.glob(pattern):
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                try:
+                    bin_dir = os.path.dirname(path)
+                    pip_path = os.path.join(bin_dir, "pip")
+                    version = "Unknown"
+                    
+                    if os.path.exists(pip_path):
+                        for package in ["volttron-core", "volttron"]:
+                            result = subprocess.run(
+                                [pip_path, "show", package],
+                                capture_output=True,
+                                text=True,
+                                timeout=3
+                            )
+                            if result.returncode == 0 and result.stdout:
+                                for line in result.stdout.split("\n"):
+                                    if line.startswith("Version:"):
+                                        version = line.split(":", 1)[1].strip()
+                                        break
+                            if version != "Unknown":
+                                break
+                    
+                    installations.append({
+                        "path": path,
+                        "version": version,
+                        "name": os.path.basename(os.path.dirname(os.path.dirname(path)))
+                    })
+                except Exception:
+                    installations.append({
+                        "path": path,
+                        "version": "Unknown",
+                        "name": os.path.basename(os.path.dirname(os.path.dirname(path)))
+                    })
     
-    return None
+    seen = set()
+    unique_installations = []
+    for install in installations:
+        resolved = os.path.realpath(install["path"])
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_installations.append(install)
+    
+    return unique_installations
 
-def find_vctl_command():
-    """Find vctl command in various locations, prioritizing running instance."""
+def find_volttron_command():
+    """Find volttron command in various locations, prioritizing running instance."""
     
     try:
         import psutil
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
-                    cmd_path = proc.cmdline()[0] if proc.cmdline() else None
-                    if cmd_path and os.path.exists(cmd_path):
-                        bin_dir = os.path.dirname(cmd_path)
-                        vctl_path = os.path.join(bin_dir, "vctl")
-                        if os.path.isfile(vctl_path) and os.access(vctl_path, os.X_OK):
-                            print(f"DEBUG: Found vctl from running process: {vctl_path}")
-                            return vctl_path
+                    cmdline = proc.cmdline()
+                    for cmd in cmdline:
+                        if cmd and 'volttron' in cmd and os.path.exists(cmd) and not cmd.endswith('python'):
+                            return cmd
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except ImportError:
         pass
     
-    fresh_vctl = os.path.expanduser("~/volttron-fresh/venv-fresh/bin/vctl")
-    if os.path.exists(fresh_vctl):
-        print(f"DEBUG: Using vctl from fresh installation: {fresh_vctl}")
-        return fresh_vctl
+    installations = discover_volttron_installations()
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_env_vctl = os.path.join(os.path.dirname(current_dir), "env", "bin", "vctl")
-    if os.path.exists(project_env_vctl):
-        print(f"DEBUG: Using vctl from project env: {project_env_vctl}")
-        return project_env_vctl
+    if not installations:
+        volttron_cmd = shutil.which("volttron")
+        if volttron_cmd:
+            return volttron_cmd
+        return None
+    
+    installations.sort(key=lambda x: x.get("version", "0"), reverse=True)
+    
+    selected = installations[0]
+    
+    return selected["path"]
+
+def find_vctl_command():
+    """Find vctl command, using the same installation as volttron."""
+    
+    try:
+        import psutil
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
+                    cmdline = proc.cmdline()
+                    for cmd in cmdline:
+                        if cmd and 'volttron' in cmd and os.path.exists(cmd) and not cmd.endswith('python'):
+                            bin_dir = os.path.dirname(cmd)
+                            vctl_path = os.path.join(bin_dir, "vctl")
+                            if os.path.isfile(vctl_path) and os.access(vctl_path, os.X_OK):
+                                return vctl_path
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except ImportError:
+        pass
     
     vctl_cmd = shutil.which("vctl")
     if vctl_cmd:
-        print(f"DEBUG: Using vctl from PATH: {vctl_cmd}")
         return vctl_cmd
     
     volttron_cmd = find_volttron_command()
     if volttron_cmd:
         vctl_path = os.path.join(os.path.dirname(volttron_cmd), "vctl")
         if os.path.isfile(vctl_path) and os.access(vctl_path, os.X_OK):
-            print(f"DEBUG: Using vctl from volttron path: {vctl_path}")
             return vctl_path
     
-    print("DEBUG: Could not find vctl command")
     return None
 
 def get_volttron_env_path():
@@ -254,20 +280,11 @@ def get_volttron_env_path():
     return None
 
 def get_volttron_home():
-    """Get the VOLTTRON_HOME directory, preferring fresh installation if available."""
+    """Get the VOLTTRON_HOME directory from environment or infer from VOLTTRON installation."""
     
     env_volttron_home = os.getenv("VOLTTRON_HOME")
     if env_volttron_home:
-        print(f"DEBUG: Using VOLTTRON_HOME from environment: {env_volttron_home}")
         return env_volttron_home
-    
-    possible_paths = [
-        os.path.expanduser("~/volttron-fresh/volttron_home"),
-        os.path.expanduser("~/.volttron"),
-        os.path.expanduser("~/volttron_home"),
-        "/var/lib/volttron",
-        "/tmp/volttron_home"
-    ]
     
     try:
         import psutil
@@ -276,23 +293,46 @@ def get_volttron_home():
                 if 'volttron' in proc.name().lower() or any('volttron' in cmd.lower() for cmd in proc.cmdline() if cmd):
                     if proc.environ() and 'VOLTTRON_HOME' in proc.environ():
                         volttron_home_from_proc = proc.environ()['VOLTTRON_HOME']
-                        print(f"DEBUG: Found VOLTTRON_HOME from running process: {volttron_home_from_proc}")
                         return volttron_home_from_proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except ImportError:
         pass
+    
+    volttron_cmd = find_volttron_command()
+    if volttron_cmd:
+        install_name = os.path.basename(os.path.dirname(os.path.dirname(volttron_cmd)))
         
-    for path in possible_paths:
-        if os.path.exists(path):
-            if (os.path.exists(os.path.join(path, "agents")) or 
-                os.path.exists(os.path.join(path, "certificates"))):
-                print(f"DEBUG: Found valid VOLTTRON_HOME at: {path}")
-                return path
+        home_mappings = {
+            'volttron-v11-py311': os.path.expanduser("~/volttron-home-v11"),
+            'volttron-v10-py38': os.path.expanduser("~/volttron-home-v10"),
+            'venv-fresh': os.path.expanduser("~/volttron-fresh/volttron_home"),
+            'volttron-core-v2': os.path.expanduser("~/volttron-core-v2/volttron_home"),
+        }
+        
+        if install_name in home_mappings:
+            inferred_home = home_mappings[install_name]
+            if os.path.exists(inferred_home):
+                return inferred_home
+    
+    search_patterns = [
+        os.path.expanduser("~/volttron-home*"),
+        os.path.expanduser("~/volttron_home"),
+        os.path.expanduser("~/.volttron"),
+        "/var/lib/volttron",
+    ]
+    
+    import glob
+    for pattern in search_patterns:
+        for path in glob.glob(pattern):
+            if os.path.isdir(path):
+                if (os.path.exists(os.path.join(path, "agents")) or 
+                    os.path.exists(os.path.join(path, "certificates")) or
+                    os.path.exists(os.path.join(path, "configuration_store"))):
+                    return path
     
     default_volttron_home = os.path.expanduser("~/.volttron")
     os.makedirs(default_volttron_home, exist_ok=True)
-    print(f"DEBUG: Using default VOLTTRON_HOME: {default_volttron_home}")
     return default_volttron_home
 
 
@@ -1366,8 +1406,6 @@ def vctl_list_agents():
         if not vctl_path:
             return "❌ Could not find vctl command. Please ensure VOLTTRON is installed."
         
-        print(f"DEBUG: Running vctl list_agents with paths: VOLTTRON_HOME={volttron_home}, vctl={vctl_path}")
-        
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
@@ -1380,10 +1418,6 @@ def vctl_list_agents():
             env=env,
             timeout=15
         )
-        
-        print(f"DEBUG: vctl_list_agents direct command result code: {result.returncode}")
-        print(f"DEBUG: vctl_list_agents stdout: {result.stdout}")
-        print(f"DEBUG: vctl_list_agents stderr: {result.stderr}")
         
         if result.returncode == 0:
             combined_output = ""
@@ -1412,7 +1446,6 @@ def vctl_list_agents():
             error = result.stderr or "Unknown error"
             return f"Error listing agents: {error}"
     except Exception as e:
-        print(f"DEBUG: Exception in vctl_list_agents: {str(e)}")
         return f"Failed to list agents: {str(e)}"
 
 def vctl_start_agent(agent_uuid_or_tag):
@@ -2318,63 +2351,69 @@ def vctl_install_listener_agent():
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        pip_cmd = find_pip_command()
-        if pip_cmd:
-            check_result = subprocess.run([
-                pip_cmd, "show", "volttron-listener-agent"
-            ], capture_output=True, text=True, timeout=10, env=env)
-            
-            legacy_check_result = subprocess.run([
-                pip_cmd, "show", "volttron-listener"
-            ], capture_output=True, text=True, timeout=10, env=env)
-            
-            if check_result.returncode != 0 and legacy_check_result.returncode != 0:
-                print("Installing volttron-listener-agent package...")
-                install_result = subprocess.run([
-                    pip_cmd, "install", "volttron-listener-agent"
-                ], capture_output=True, text=True, timeout=60, env=env)
-                
-                if install_result.returncode != 0:
-                    install_result = subprocess.run([
-                        pip_cmd, "install", "volttron-listener"
-                    ], capture_output=True, text=True, timeout=60, env=env)
-                    
-                    if install_result.returncode != 0:
-                        return f"❌ Failed to install listener agent package: {install_result.stderr}"
-        
-        messages = []
-        package_used = None
+        package_name = "volttron-listener"
         
         try:
-            print(f"DEBUG: Attempting to install volttron-listener-agent")
+            print(f"DEBUG: Attempting to install {package_name} with vctl install")
             result = subprocess.run([
-                vctl_cmd, "install", "volttron-listener-agent",
-                "--vip-identity", "listener"
-            ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
+                vctl_cmd, "install", package_name,
+                "--vip-identity", "listener",
+                "--tag", "listener",
+                "--force"
+            ], capture_output=True, text=True, timeout=120, env=env, cwd=volttron_home)
             
             print(f"DEBUG: vctl install result: returncode={result.returncode}")
             print(f"DEBUG: stdout: {result.stdout}")
             print(f"DEBUG: stderr: {result.stderr}")
             
-            if result.returncode != 0 and "not found" in (result.stderr + result.stdout).lower():
-                print(f"DEBUG: First attempt failed, trying volttron-listener")
-                result = subprocess.run([
-                    vctl_cmd, "install", "volttron-listener",
-                    "--vip-identity", "listener"
-                ], capture_output=True, text=True, timeout=30, env=env, cwd=volttron_home)
+            if result.returncode == 0:
+                import time
+                time.sleep(2)
+                return f"✅ **Listener agent installed successfully!** Check with 'vctl status'"
                 
-                print(f"DEBUG: vctl install (legacy) result: returncode={result.returncode}")
-                print(f"DEBUG: stdout: {result.stdout}")
-                print(f"DEBUG: stderr: {result.stderr}")
-                package_used = "volttron-listener"
-            else:
-                package_used = "volttron-listener-agent"
+        except Exception as e:
+            print(f"DEBUG: vctl install exception: {str(e)}")
+        
+        print(f"DEBUG: vctl install failed, trying GitHub installation...")
+        github_url = "https://github.com/eclipse-volttron/volttron-listener.git"
+        
+        try:
+            print(f"DEBUG: Installing listener from GitHub: {github_url}")
+            result = subprocess.run([
+                vctl_cmd, "install", github_url,
+                "--vip-identity", "listener",
+                "--tag", "listener",
+                "--force"
+            ], capture_output=True, text=True, timeout=120, env=env, cwd=volttron_home)
+            
+            print(f"DEBUG: GitHub install result: returncode={result.returncode}")
+            print(f"DEBUG: stdout: {result.stdout}")
+            print(f"DEBUG: stderr: {result.stderr}")
                 
         except Exception as e:
             return f"❌ Error during listener agent installation: {str(e)}"
         
         if result.returncode != 0:
-            return f"❌ Failed to install listener agent: {result.stderr or result.stdout}"
+            error_msg = result.stderr or result.stdout
+            
+            if "already exists" in error_msg.lower():
+                return f"""⚠️ **Listener agent already exists**
+
+The listener agent is already installed. You can:
+
+**Option 1: Check status**
+• Say: **"vctl status"** to see if it's running
+
+**Option 2: Uninstall first**
+• Say: **"uninstall listener"** or **"force remove listener"**
+
+**Option 3: Start if stopped**
+• Say: **"start listener"**
+
+What would you like to do?
+"""
+            
+            return f"❌ Failed to install listener agent: {error_msg}"
         
         import time
         install_wait = int(os.getenv('VOLTTRON_INSTALL_WAIT', '2'))
@@ -2452,60 +2491,83 @@ To install from GitHub, you can:
         env = os.environ.copy()
         env["VOLTTRON_HOME"] = volttron_home
         
-        pip_cmd = find_pip_command()
-        if pip_cmd:
-            package_name = agent_info['package']
-            print(f"📦 Installing package: {package_name}")
-            install_result = subprocess.run([
-                pip_cmd, "install", package_name
-            ], capture_output=True, text=True, timeout=120, env=env)
-            
-            if install_result.returncode != 0 and 'alt_package' in agent_info:
-                alt_package = agent_info['alt_package']
-                print(f"📦 Primary package install failed, trying alternative: {alt_package}")
-                alt_install_result = subprocess.run([
-                    pip_cmd, "install", alt_package
-                ], capture_output=True, text=True, timeout=120, env=env)
-                
-                if alt_install_result.returncode == 0:
-                    package_name = alt_package
-                    install_result = alt_install_result
-            
-            if install_result.returncode != 0:
-                return f"""❌ **Failed to install {agent_name} agent package**
-
-**Error:** {install_result.stderr or install_result.stdout}
-
-💡 **Try manually:** `pip install {package_name}`"""
-            
-            agent_info['installed_package'] = package_name
-        
-        package_to_install = agent_info.get('installed_package', agent_info['package'])
+        package_to_install = agent_info['package']
         
         install_args = [
             vctl_cmd, "install", package_to_install,
-            "--vip-identity", agent_info['vip_identity']
+            "--vip-identity", agent_info['vip_identity'],
+            "--force"
         ]
         
         if agent_info['category'] in ['Core', 'Historian']:
             install_args.append("--start")
         
+        print(f"🔧 Trying vctl install {package_to_install}...")
         result = subprocess.run(
             install_args,
-            capture_output=True, text=True, timeout=60, env=env, cwd=volttron_home
+            capture_output=True, text=True, timeout=120, env=env, cwd=volttron_home
         )
         
         if result.returncode == 0:
             auto_started = '--start' in install_args
             status_msg = "installed and started" if auto_started else "installed"
             return f"✅ {agent_info['package']} {status_msg} successfully"
-        else:
-            error_msg = "Unknown error"
-            if result.stderr:
-                error_lines = [line.strip() for line in result.stderr.split('\n') if line.strip()]
-                if error_lines:
-                    error_msg = error_lines[0][:100]
-            return f"❌ {agent_info['package']} installation failed: {error_msg}"
+        
+        print(f"⚠️ vctl install failed for {package_to_install}, checking for GitHub URL...")
+        error_msg = result.stderr or result.stdout or "Unknown error"
+        
+        if "already exists" in error_msg.lower():
+            return f"""⚠️ **{agent_name} agent already exists**
+
+The {agent_name} agent is already installed. You can:
+
+**Option 1: Check status**
+• Say: **"vctl status"** to see if it's running
+
+**Option 2: Uninstall first**
+• Say: **"uninstall {agent_info['vip_identity']}"**
+
+**Option 3: Start if stopped**
+• Say: **"start {agent_info['vip_identity']}"**
+
+What would you like to do?
+"""
+        
+        if 'github_url' in agent_info:
+            github_url = agent_info['github_url']
+            print(f"🔍 Trying GitHub installation: {github_url}")
+            
+            github_args = [
+                vctl_cmd, "install", github_url,
+                "--vip-identity", agent_info['vip_identity'],
+                "--tag", agent_name,
+                "--force"
+            ]
+            
+            if agent_info['category'] in ['Core', 'Historian']:
+                github_args.append("--start")
+            
+            github_result = subprocess.run(
+                github_args,
+                capture_output=True, text=True, timeout=120, env=env, cwd=volttron_home
+            )
+            
+            if github_result.returncode == 0:
+                auto_started = '--start' in github_args
+                status_msg = "installed and started" if auto_started else "installed"
+                return f"✅ {agent_name} {status_msg} successfully from GitHub!"
+            else:
+                github_error = github_result.stderr or github_result.stdout
+                return f"""❌ **Failed to install {agent_name}**
+
+**Tried:**
+1. vctl install {package_to_install} - Failed: {error_msg[:200]}
+2. GitHub install {github_url} - Failed: {github_error[:200]}
+
+**Try manually:** `vctl install {package_to_install} --vip-identity {agent_info['vip_identity']} --force`
+"""
+        
+        return f"❌ {agent_info['package']} installation failed: {error_msg}"
             
     except Exception as e:
         return f"❌ {agent_name} installation error: {type(e).__name__} - {str(e)[:100]}"
@@ -2841,7 +2903,7 @@ Recommendation: Ensure VOLTTRON is installed properly"""
         env["VOLTTRON_HOME"] = volttron_home
         
         result = subprocess.run(
-            [vctl_cmd, "install", repo_url, "--tag", repo_name, "--start"],
+            [vctl_cmd, "install", repo_url, "--tag", repo_name, "--start", "--force"],
             capture_output=True,
             text=True,
             env=env,
@@ -2851,11 +2913,22 @@ Recommendation: Ensure VOLTTRON is installed properly"""
         if result.returncode == 0:
             return f"✅ {repo_name} installed from GitHub successfully"
         else:
-            error_msg = "Unknown error"
-            if result.stderr:
-                error_lines = [line.strip() for line in result.stderr.split('\n') if line.strip()]
-                if error_lines:
-                    error_msg = error_lines[0][:100]
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            
+            if "already exists" in error_msg.lower():
+                return f"""⚠️ **{repo_name} agent already exists**
+
+The {repo_name} agent is already installed. You can:
+
+**Option 1: Uninstall first**
+• Say: **"uninstall {repo_name}"** or **"force remove {repo_name}"**
+
+**Option 2: Check status**
+• Say: **"vctl status"**
+
+What would you like to do?
+"""
+            
             return f"❌ {repo_name} installation failed: {error_msg}"
         
     except subprocess.TimeoutExpired:
@@ -3246,8 +3319,6 @@ def pip_install_package(package_name, upgrade=False):
         if upgrade:
             cmd.append("--upgrade")
         cmd.append(package_name)
-        
-        print(f"DEBUG: Running pip command: {' '.join(cmd)}")
         
         result = subprocess.run(
             cmd,
@@ -3667,7 +3738,9 @@ def smart_install_package(package_name, user_message=""):
     """Intelligently install a package by searching GitHub and reading its README.
     
     Generic approach:
-    1. If it looks like a PyPI package name (volttron-*), try pip install
+    1. If it looks like a VOLTTRON package name (volttron-*):
+       - Use vctl install for agents (volttron-<agent-name>)
+       - Use vctl install-lib for libraries (volttron-lib-*)
     2. Otherwise, search GitHub for the repository
     3. Use install_from_github_smart to read README and follow instructions
     
@@ -3681,9 +3754,115 @@ def smart_install_package(package_name, user_message=""):
     package_lower = package_name.lower().strip()
     
     if package_lower.startswith('volttron-'):
-        result = pip_install_package(package_name)
-        if '✅' in result:
-            return result
+        vctl_cmd = find_vctl_command()
+        if not vctl_cmd:
+            return "❌ vctl command not found. VOLTTRON not running. Start VOLTTRON first with 'start volttron'."
+        
+        volttron_home = get_volttron_home()
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        if 'lib' in package_lower or 'volttron-lib-' in package_lower:
+            print(f"📦 Step 1: Trying vctl install-lib {package_name}...")
+            result = subprocess.run(
+                [vctl_cmd, "install-lib", package_name],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            
+            if result.returncode == 0:
+                return f"✅ Successfully installed {package_name} library using vctl install-lib!"
+            
+            github_url = f"https://github.com/eclipse-volttron/{package_name}.git"
+            print(f"⚠️ Step 2: vctl install-lib failed, trying GitHub: {github_url}...")
+            github_result = subprocess.run(
+                [vctl_cmd, "install-lib", f"git+{github_url}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            
+            if github_result.returncode == 0:
+                return f"✅ Successfully installed {package_name} library from GitHub using vctl install-lib!"
+            
+            print(f"⚠️ Step 3: vctl install-lib not available, using 'poetry add --directory $VOLTTRON_HOME' as fallback...")
+            
+            poetry_cmd = None
+            volttron_cmd = find_volttron_command()
+            if volttron_cmd:
+                bin_dir = os.path.dirname(volttron_cmd)
+                poetry_in_same_venv = os.path.join(bin_dir, "poetry")
+                if os.path.exists(poetry_in_same_venv):
+                    poetry_cmd = poetry_in_same_venv
+            
+            if not poetry_cmd:
+                poetry_cmd = shutil.which("poetry")
+            
+            if not poetry_cmd:
+                error_details = f"""
+❌ **Failed to install {package_name}**
+
+**Tried:**
+1. vctl install-lib {package_name} - Failed: {result.stderr[:200] if result.stderr else result.stdout[:200]}
+2. vctl install-lib from GitHub - Failed: {github_result.stderr[:200] if github_result.stderr else github_result.stdout[:200]}
+
+**Poetry not found in VOLTTRON installation**
+
+**Manual installation:**
+```bash
+vctl install-lib {package_name}
+vctl install-lib git+https://github.com/eclipse-volttron/{package_name}.git
+poetry add --directory $VOLTTRON_HOME {package_name}
+```
+
+Need help? Let me know!
+"""
+                return error_details
+            
+            poetry_result = subprocess.run(
+                [poetry_cmd, "add", "--directory", volttron_home, package_name],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            
+            if poetry_result.returncode == 0:
+                return f"✅ Successfully installed {package_name} library using poetry add (manual method)!"
+            else:
+                error_msg = poetry_result.stderr or poetry_result.stdout or "Unknown error"
+                return f"❌ Failed all installation attempts for {package_name}: {error_msg[:200]}"
+        else:
+            print(f"🤖 Step 1: Installing {package_name} agent using vctl install...")
+            result = subprocess.run(
+                [vctl_cmd, "install", package_name, "--force"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            
+            if result.returncode == 0:
+                return f"✅ Successfully installed {package_name} agent!"
+            
+            github_url = f"https://github.com/eclipse-volttron/{package_name}.git"
+            print(f"⚠️ Step 2: vctl install failed, trying GitHub: {github_url}...")
+            github_result = subprocess.run(
+                [vctl_cmd, "install", github_url, "--force"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            
+            if github_result.returncode == 0:
+                return f"✅ Successfully installed {package_name} agent from GitHub!"
+            else:
+                error_msg = github_result.stderr or github_result.stdout or "Unknown error"
+                return f"❌ Failed to install {package_name}: {error_msg[:200]}"
     
     search_result = search_github_for_agent(package_name)
     
@@ -3703,35 +3882,77 @@ def install_fake_driver_library():
         str: Status message about the installation
     """
     try:
-        pip_cmd = find_pip_command()
-        if not pip_cmd:
-            return "❌ Pip command not found. Please install pip first."
+        vctl_cmd = find_vctl_command()
+        if not vctl_cmd:
+            return "❌ vctl command not found. VOLTTRON not running. Start VOLTTRON first with 'start volttron'."
         
         package_name = "volttron-lib-fake-driver"
+        volttron_home = get_volttron_home()
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
         
-        print(f"📦 Installing {package_name}...")
+        print(f"📦 Installing library {package_name} with vctl install-lib...")
         install_result = subprocess.run(
-            [pip_cmd, "install", package_name],
+            [vctl_cmd, "install-lib", package_name],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
+            env=env
         )
         
         if install_result.returncode == 0:
-            if "Requirement already satisfied" in install_result.stdout:
+            if "already installed" in install_result.stdout.lower() or "already satisfied" in install_result.stdout.lower():
                 return f"✅ **{package_name} is already installed.** Say 'configure fake driver' to set it up."
             else:
                 return f"✅ **Successfully installed {package_name}!** Say 'configure fake driver' to set it up."
-        else:
-            error_output = install_result.stderr or install_result.stdout or "Unknown error"
+        
+        print(f"⚠️ vctl install-lib failed, trying GitHub installation...")
+        error_output = install_result.stderr or install_result.stdout or "Unknown error"
+        print(f"Error from vctl install-lib: {error_output}")
+        
+        github_url = f"https://github.com/eclipse-volttron/{package_name}.git"
+        print(f"🔍 Attempting to install from GitHub: {github_url}")
+        
+        try:
+            github_result = subprocess.run(
+                [vctl_cmd, "install-lib", f"git+{github_url}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            
+            if github_result.returncode == 0:
+                return f"""✅ **Successfully installed {package_name} from GitHub!**
+
+Installation method: vctl install-lib (poetry add wrapper)
+
+Say 'configure fake driver' to set it up! 🚀"""
+            else:
+                github_error = github_result.stderr or github_result.stdout
+                return f"""❌ **Failed to install {package_name}**
+
+**Tried:**
+1. vctl install-lib {package_name} - Failed: {error_output[:200]}
+2. vctl install-lib from GitHub - Failed: {github_error[:200]}
+
+**Manual installation:**
+```bash
+vctl install-lib {package_name}
+vctl install-lib git+{github_url}
+poetry add --directory $VOLTTRON_HOME {package_name}
+```
+
+Need help? Let me know!"""
+        
+        except Exception as git_error:
             return f"""❌ **Failed to install {package_name}**
 
-Error: {error_output}
+**Tried:**
+1. vctl install-lib {package_name} - Failed: {error_output[:200]}
+2. GitHub installation - Error: {str(git_error)[:200]}
 
-**Troubleshooting:**
-• Make sure you're in the correct virtual environment
-• Check your internet connection
-• Try: `pip install {package_name}` manually
+**Try manually:** `vctl install-lib {package_name}`
 
 Need help? Let me know!"""
             
@@ -3865,30 +4086,41 @@ def start_fake_driver():
             return "❌ VOLTTRON is not running. Say 'start volttron' first."
         
         print("📦 Checking fake driver library...")
-        pip_cmd = find_pip_command()
-        if not pip_cmd:
-            return "❌ Pip command not found."
+        vctl_cmd = find_vctl_command()
+        if not vctl_cmd:
+            return "❌ vctl command not found."
         
-        check_lib = subprocess.run(
-            [pip_cmd, "show", "volttron-lib-fake-driver"],
+        volttron_home = get_volttron_home()
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
+        
+        print("📦 Installing fake driver library with vctl install-lib...")
+        install_result = subprocess.run(
+            [vctl_cmd, "install-lib", "volttron-lib-fake-driver"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=120,
+            env=env
         )
         
-        if check_lib.returncode != 0:
-            print("📦 Installing fake driver library...")
-            install_result = subprocess.run(
-                [pip_cmd, "install", "volttron-lib-fake-driver"],
+        if install_result.returncode == 0:
+            if "already installed" in install_result.stdout.lower() or "already satisfied" in install_result.stdout.lower():
+                print("✅ Fake driver library already installed")
+            else:
+                print("✅ Fake driver library installed")
+        else:
+            print("⚠️ Trying GitHub installation...")
+            github_url = "https://github.com/eclipse-volttron/volttron-lib-fake-driver.git"
+            github_result = subprocess.run(
+                [vctl_cmd, "install-lib", f"git+{github_url}"],
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=120,
+                env=env
             )
-            if install_result.returncode != 0:
-                return f"❌ Failed to install fake driver library: {install_result.stderr}"
-            print("✅ Fake driver library installed")
-        else:
-            print("✅ Fake driver library already installed")
+            if github_result.returncode != 0:
+                return f"❌ Failed to install fake driver library: {github_result.stderr or github_result.stdout}"
+            print("✅ Fake driver library installed from GitHub")
         
         print("🔧 Checking platform driver...")
         vctl_cmd = find_vctl_command()
@@ -4263,40 +4495,43 @@ def setup_fake_driver_complete():
         time.sleep(3)  # Give it time to start
         
         status_messages.append("\n📦 **Step 2/5: Installing volttron-lib-fake-driver...**")
-        pip_cmd = find_pip_command()
-        if not pip_cmd:
-            return "❌ Pip command not found. Please install pip first."
+        vctl_cmd = find_vctl_command()
+        if not vctl_cmd:
+            return "❌ vctl command not found. Please start VOLTTRON first."
+        
+        volttron_home = get_volttron_home()
+        env = os.environ.copy()
+        env["VOLTTRON_HOME"] = volttron_home
         
         install_lib_result = subprocess.run(
-            [pip_cmd, "install", "volttron-lib-fake-driver"],
+            [vctl_cmd, "install-lib", "volttron-lib-fake-driver"],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
+            env=env
         )
         
         if install_lib_result.returncode == 0:
-            if "Requirement already satisfied" in install_lib_result.stdout:
+            if "already installed" in install_lib_result.stdout.lower() or "already satisfied" in install_lib_result.stdout.lower():
                 status_messages.append("   ✅ volttron-lib-fake-driver already installed")
             else:
                 status_messages.append("   ✅ volttron-lib-fake-driver installed successfully")
         else:
-            return "\n".join(status_messages) + f"\n❌ Failed to install fake driver library: {install_lib_result.stderr}"
-        
-        status_messages.append("\n📦 **Step 3/5: Installing volttron-platform-driver...**")
-        install_pd_result = subprocess.run(
-            [pip_cmd, "install", "volttron-platform-driver"],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        if install_pd_result.returncode == 0:
-            if "Requirement already satisfied" in install_pd_result.stdout:
-                status_messages.append("   ✅ volttron-platform-driver already installed")
+            github_url = "https://github.com/eclipse-volttron/volttron-lib-fake-driver.git"
+            github_result = subprocess.run(
+                [vctl_cmd, "install-lib", f"git+{github_url}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
+            )
+            if github_result.returncode == 0:
+                status_messages.append("   ✅ volttron-lib-fake-driver installed from GitHub")
             else:
-                status_messages.append("   ✅ volttron-platform-driver installed successfully")
-        else:
-            return "\n".join(status_messages) + f"\n❌ Failed to install platform driver: {install_pd_result.stderr}"
+                return "\n".join(status_messages) + f"\n❌ Failed to install fake driver library: {github_result.stderr or github_result.stdout}"
+        
+        status_messages.append("\n📦 **Step 3/5: Installing volttron-platform-driver agent...**")
+        status_messages.append("   ⏭️  Will install platform-driver agent in next step")
         
         time.sleep(2)
         
@@ -5095,43 +5330,18 @@ Would you like me to:
 Just ask: **"Install the fake driver library"** and I'll get started! 🚀
 """
         
-        pip_cmd = find_pip_command()
         package_name = "volttron-platform-driver"
         
-        if pip_cmd:
-            print(f"📦 Installing platform driver package: {package_name}")
-            pip_result = subprocess.run([
-                pip_cmd, "install", package_name
-            ], capture_output=True, text=True, timeout=120, env=env)
-            
-            if pip_result.returncode != 0:
-                return f"""❌ **Failed to install platform driver package**
-
-Error installing the Python package:
-```
-{pip_result.stderr or pip_result.stdout}
-```
-
-Please try manually running:
-```
-pip install volttron-platform-driver
-```
-
-Once the package is installed, try installing the agent again.
-"""
-        
-        print(f"Installing platform driver with vctl: {vctl_cmd}")
+        print(f"Installing platform driver agent with vctl: {vctl_cmd}")
         print(f"VOLTTRON_HOME: {volttron_home}")
         
-        install_cmd = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} install volttron-platform-driver --vip-identity platform.driver --start --priority 40"
-        install_result = subprocess.run(
-            install_cmd, 
-            shell=True,
-            capture_output=True, 
-            text=True, 
-            timeout=120,
-            env=env
-        )
+        install_result = subprocess.run([
+            vctl_cmd, "install", package_name,
+            "--vip-identity", "platform.driver",
+            "--start",
+            "--priority", "40",
+            "--force"
+        ], capture_output=True, text=True, timeout=120, env=env)
         
         print(f"Platform driver install command result: {install_result.returncode}")
         print(f"Platform driver install stdout: {install_result.stdout}")
@@ -5155,6 +5365,24 @@ Ask: **"Install the fake driver library"** and I'll help you set up fake sensor 
 """
         else:
             error_msg = install_result.stderr or install_result.stdout or "Unknown error"
+            
+            if "already exists" in error_msg.lower():
+                return f"""{install_warning_msg}⚠️ **Platform driver already exists**
+
+The platform driver is already installed. You can:
+
+**Option 1: Uninstall first**
+• Say: **"uninstall platform.driver"**
+
+**Option 2: Check status**
+• Say: **"vctl status"** to see if it's running
+
+**Option 3: Force reinstall** (this will overwrite the existing installation)
+• The system tried to force reinstall but encountered an issue
+
+What would you like to do?
+"""
+            
             return f"""{install_warning_msg}❌ **Failed to install platform driver**
 
 Installation failed with error:
@@ -5165,7 +5393,7 @@ Installation failed with error:
 **Troubleshooting steps:**
 1. **Check VOLTTRON status** - Make sure VOLTTRON is running
 2. **Check network** - Ensure internet connection for package download
-3. **Try manual install** - Run: `vctl install volttron-platform-driver --vip-identity platform.driver --start`
+3. **Try manual install** - Run: `vctl install volttron-platform-driver --vip-identity platform.driver --start --force`
 
 Would you like me to help troubleshoot this issue?
 """
@@ -5705,3 +5933,118 @@ Configuration file saved to: {config_file}"""
         
     except Exception as e:
         return f"❌ Error creating historian config: {str(e)}"
+
+def list_volttron_installations():
+    """List all discovered VOLTTRON installations on this system."""
+    try:
+        installations = discover_volttron_installations()
+        
+        if not installations:
+            return """❌ **No VOLTTRON Installations Found**
+
+I couldn't find any VOLTTRON installations on your system.
+
+**To install VOLTTRON:**
+```bash
+pip install volttron
+```
+
+Or for development:
+```bash
+git clone https://github.com/eclipse-volttron/volttron-core.git
+cd volttron-core
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+```"""
+        
+        current_volttron = find_volttron_command()
+        
+        output = f"🔍 **Found {len(installations)} VOLTTRON Installation(s)**\n\n"
+        
+        for i, install in enumerate(installations, 1):
+            is_current = install['path'] == current_volttron
+            marker = " ← Currently active" if is_current else ""
+            status_icon = "✓" if is_current else " "
+            
+            output += f"{i}. [{status_icon}] **{install['name']}** (v{install['version']}){marker}\n"
+            output += f"   Path: `{install['path']}`\n\n"
+        
+        if len(installations) > 1:
+            output += "\n**How to use a different version:**\n\n"
+            output += "**Option 1 - Activate before starting chat (Recommended):**\n"
+            output += "```bash\n"
+            output += "# Example: Use VOLTTRON 11\n"
+            output += "source ~/volttron-v11-py311/bin/activate\n"
+            output += "cd ~/volttron/volttron-ai-igorversions\n"
+            output += "python -m chat_app\n"
+            output += "```\n\n"
+            output += "**Option 2 - Set environment variable:**\n"
+            output += "```bash\n"
+            output += "export VOLTTRON_HOME=~/volttron-home-v11\n"
+            output += "python -m chat_app\n"
+            output += "```\n\n"
+            output += "**Option 3 - Update your PATH:**\n"
+            output += "Add desired version's bin directory to the front of your PATH\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Error listing VOLTTRON installations: {str(e)}"
+
+def get_current_volttron_version():
+    """Get the version of the currently selected VOLTTRON installation."""
+    try:
+        volttron_path = find_volttron_command()
+        if not volttron_path:
+            return "❌ No VOLTTRON installation found"
+        
+        bin_dir = os.path.dirname(volttron_path)
+        pip_path = os.path.join(bin_dir, "pip")
+        
+        version = "Unknown"
+        install_name = os.path.basename(os.path.dirname(bin_dir))
+        
+        if os.path.exists(pip_path):
+            for package in ["volttron-core", "volttron"]:
+                result = subprocess.run(
+                    [pip_path, "show", package],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                if result.returncode == 0 and result.stdout:
+                    for line in result.stdout.split("\n"):
+                        if line.startswith("Version:"):
+                            version = line.split(":", 1)[1].strip()
+                            break
+                if version != "Unknown":
+                    break
+        
+        in_path = shutil.which("volttron") == volttron_path
+        source_info = "in PATH" if in_path else "auto-discovered"
+        
+        return f"""📋 **Current VOLTTRON Installation**
+
+**Version:** {version}
+**Name:** {install_name}
+**Path:** `{volttron_path}`
+**Source:** {source_info}
+
+💡 **How VOLTTRON is selected:**
+1. Running VOLTTRON process (if any)
+2. `volttron` in your PATH
+3. Auto-discovered (highest version)
+
+To see all available versions: "list volttron installations"
+
+To use a different version:
+• Activate its virtualenv before starting this chat app
+• Or add it to your PATH
+• Or set VOLTTRON_HOME environment variable
+"""
+        
+    except Exception as e:
+        return f"❌ Error getting VOLTTRON version: {str(e)}"
+
+

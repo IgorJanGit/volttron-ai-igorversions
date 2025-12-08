@@ -98,17 +98,13 @@ if agent:
             if result.returncode == 0:
                 output = result.stdout
                 if output.strip():
-                    print(f"DEBUG list_agents_tool returning successful status output: {output}")
                     return f"🤖 **Installed VOLTTRON Agents:**\n\n```\n{output}\n```"
                 else:
-                    print("DEBUG list_agents_tool: Empty output from vctl status")
                     return "No agents are currently installed."
             else:
                 error = result.stderr or result.stdout or "Unknown error"
-                print(f"DEBUG list_agents_tool command failed: {error}")
                 return f"Error listing agents: {error}"
         except Exception as e:
-            print(f"DEBUG list_agents_tool exception: {str(e)}")
             return f"Failed to list agents: {str(e)}"
 
     @agent.tool_plain
@@ -1917,13 +1913,22 @@ Ready to build the package? (Proceed automatically...)
             "- NO numbered lists unless requested\n" 
             "- NO \"I'll do X for you\" - just do it\n"
             "- NO progress reports - just show final status\n\n"
-            "FLEXIBLE INSTALLATION:\n"
-            "- When user says 'install X' use smart_install_package tool\n"
-            "- It automatically determines pip vs vctl based on package type\n"
-            "- Fake driver library MUST use pip (vctl won't work)\n"
-            "- Python libraries (volttron-*) use pip\n"
-            "- VOLTTRON agents use vctl\n"
-            "- Let smart_install_package handle the logic - don't overthink it\n\n"
+            "INSTALLATION COMMANDS - ABSOLUTELY MANDATORY:\n"
+            "============================================\n"
+            "When user says ANYTHING like 'install X' or 'install the X' YOU MUST:\n"
+            "1. Extract package name (e.g., 'volttron-lib-modbustk-driver')\n"
+            "2. IMMEDIATELY call smart_install_package(package_name)\n"
+            "3. DO NOT respond with text - ONLY call the function\n"
+            "4. NO options, NO menus, NO questions - JUST CALL THE FUNCTION\n\n"
+            "EXAMPLE:\n"
+            "User: 'install volttron-lib-modbustk-driver'\n"
+            "You: [call smart_install_package('volttron-lib-modbustk-driver')] <-- DO THIS\n"
+            "You: NOT 'I can help you install...' <-- NEVER DO THIS\n\n"
+            "The smart_install_package function handles EVERYTHING automatically:\n"
+            "- Detects if it's a library or agent\n"
+            "- Uses vctl for VOLTTRON packages\n"
+            "- Uses pip for fake driver and other Python libraries\n"
+            "- Returns success/failure message\n\n"
             "WEBPAGE AND DOCUMENTATION:\n"
             "- When asked to read a URL or webpage, use fetch_webpage_tool\n"
             "- Especially for GitHub repositories and documentation\n"
@@ -2047,6 +2052,18 @@ Ready to build the package? (Proceed automatically...)
                     return "No problem! I'll leave everything as is. What would you like to do next?"
             
             message_lower = message.lower().strip()
+            
+            if 'install volttron-lib-' in message_lower or 'install volttron-' in message_lower:
+                import re
+                match = re.search(r'install\s+(volttron-[a-z0-9\-]+)', message_lower)
+                if match:
+                    package_name = match.group(1)
+                    print(f"🚀 DIRECT INSTALL BYPASS: Installing {package_name}")
+                    return self.call_function_tool("smart_install_package", {
+                        "package_name": package_name,
+                        "user_message": message
+                    })
+            
             if (('what agents are running' in message_lower) or 
                 ('which agents are running' in message_lower) or
                 ('what agents are installed' in message_lower) or
@@ -2057,6 +2074,7 @@ Ready to build the package? (Proceed automatically...)
                 print(f"DIRECT OVERRIDE: Executing vctl_status for '{message}' query")
                 return self.call_function_tool("vctl_status", {})
             
+            print(f"DEBUG generate_response: Checking direct_result for '{message}'")
             direct_result = self._handle_direct_command(message)
             if direct_result:
                 return direct_result
@@ -2628,7 +2646,6 @@ You can use "vctl status" to see all agents and their tags."""
             r'(?:add|get|setup|set\s+up)\s+(?:the\s+)?(\S+(?:\s+\S+)?)',  
         ]
         
-       
         for pattern in install_general_patterns:
             match = re.search(pattern, message_lower)
             if match:
