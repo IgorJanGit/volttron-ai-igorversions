@@ -1,0 +1,348 @@
+"""
+{{DESCRIPTION}}
+
+This is a Listener-style VOLTTRON agent created by the Agent Creator.
+It subscribes to topics, processes messages, and can forward or transform data.
+
+Author: {{AUTHOR}}
+Version: {{VERSION}}
+"""
+
+import logging
+import json
+from volttron.platform.agent import utils
+from volttron.platform.vip.agent import Agent, Core, RPC
+
+# Setup logging
+utils.setup_logging()
+_log = logging.getLogger(__name__)
+
+__version__ = "{{VERSION}}"
+
+
+class {{AGENT_NAME}}ListenerAgent(Agent):
+    """
+    Listener-Style VOLTTRON Agent
+    
+    This agent demonstrates a common VOLTTRON pattern: the Listener Agent.
+    
+    **Key Features:**
+    
+    1. **Topic Subscription**: Subscribes to one or more topics on the message bus
+    2. **Message Processing**: Receives and processes incoming messages
+    3. **Filtering**: Can filter messages based on content or metadata
+    4. **Data Transformation**: Can transform data before forwarding
+    5. **RPC Methods**: Exposes methods for external control
+    
+    **Common Use Cases:**
+    - Monitoring device data streams
+    - Logging specific events or data points
+    - Filtering and forwarding relevant data
+    - Aggregating data from multiple sources
+    - Triggering actions based on message content
+    
+    VIP Identity: {{VIP_IDENTITY}}
+    """
+    
+    def __init__(self, config_path, **kwargs):
+        """
+        Initialize the listener agent.
+        
+        Sets up default configuration including:
+        - Topics to subscribe to
+        - Message filtering criteria
+        - Output/forwarding settings
+        """
+        super({{AGENT_NAME}}ListenerAgent, self).__init__(**kwargs)
+        
+        # Default configuration
+        self.default_config = {
+            # Topics to subscribe to (supports wildcards)
+            "subscribe_topics": {{TOPICS_SUBSCRIBE}},
+            
+            # Topics to publish processed data to
+            "publish_topics": {{TOPICS_PUBLISH}},
+            
+            # Filter settings
+            "filter_enabled": False,
+            "filter_keys": [],  # Only process messages with these keys
+            
+            # Processing settings
+            "log_all_messages": True,
+            "forward_messages": False,
+            "transform_data": False,
+            
+            # Rate limiting
+            "max_messages_per_minute": 0  # 0 = no limit
+        }
+        
+        # Message counter for rate limiting
+        self.message_count = 0
+        self.last_reset_time = utils.get_aware_utcnow()
+        
+        # Set default and subscribe to config changes
+        self.vip.config.set_default("config", self.default_config)
+        self.vip.config.subscribe(self._configure, actions=["NEW", "UPDATE"], pattern="config")
+        
+    def _configure(self, config_name, action, contents):
+        """
+        Handle configuration updates.
+        
+        Allows dynamic reconfiguration of:
+        - Subscription topics
+        - Filtering rules
+        - Processing behavior
+        """
+        config = self.default_config.copy()
+        config.update(contents)
+        
+        _log.info("Listener configuration updated: %s", config)
+        
+        # Store configuration values
+        self.subscribe_topics = config.get("subscribe_topics", [])
+        self.publish_topics = config.get("publish_topics", [])
+        self.filter_enabled = config.get("filter_enabled", False)
+        self.filter_keys = config.get("filter_keys", [])
+        self.log_all_messages = config.get("log_all_messages", True)
+        self.forward_messages = config.get("forward_messages", False)
+        self.transform_data = config.get("transform_data", False)
+        self.max_messages_per_minute = config.get("max_messages_per_minute", 0)
+        
+    @Core.receiver("onstart")
+    def onstart(self, sender, **kwargs):
+        """
+        Subscribe to configured topics when agent starts.
+        
+        The listener pattern's core functionality happens here:
+        we register callbacks for all topics we want to monitor.
+        """
+        _log.info("Listener Agent {{VIP_IDENTITY}} starting...")
+        
+        # Subscribe to all configured topics
+        if self.subscribe_topics:
+            for topic in self.subscribe_topics:
+                self.vip.pubsub.subscribe(
+                    peer='pubsub',
+                    prefix=topic,
+                    callback=self._handle_message
+                )
+                _log.info("Subscribed to topic: %s", topic)
+        else:
+            _log.warning("No topics configured for subscription!")
+        
+        # Start periodic rate limit reset
+        if self.max_messages_per_minute > 0:
+            self.core.periodic(60, self._reset_rate_limit)
+        
+        _log.info("Listener Agent started successfully")
+        
+    def _handle_message(self, peer, sender, bus, topic, headers, message):
+        """
+        Main message handler - processes all incoming messages.
+        
+        This is the heart of the listener agent. It:
+        1. Checks rate limits
+        2. Applies filters
+        3. Logs the message
+        4. Processes/transforms data
+        5. Forwards to output topics
+        
+        **Message Processing Pipeline:**
+        
+        Receive → Rate Limit → Filter → Log → Transform → Forward
+        """
+        # Check rate limit
+        if self.max_messages_per_minute > 0:
+            if self.message_count >= self.max_messages_per_minute:
+                _log.warning("Rate limit exceeded, dropping message on topic: %s", topic)
+                return
+            self.message_count += 1
+        
+        # Apply filtering if enabled
+        if self.filter_enabled and not self._passes_filter(message):
+            _log.debug("Message filtered out from topic: %s", topic)
+            return
+        
+        # Log message if configured
+        if self.log_all_messages:
+            _log.info("=" * 60)
+            _log.info("MESSAGE RECEIVED")
+            _log.info("-" * 60)
+            _log.info("Topic:   %s", topic)
+            _log.info("Sender:  %s", sender)
+            _log.info("Headers: %s", json.dumps(headers, indent=2))
+            _log.info("Message: %s", json.dumps(message, indent=2))
+            _log.info("=" * 60)
+        
+        # Process and potentially transform the message
+        processed_message = self._process_message(topic, headers, message)
+        
+        # Forward message if configured
+        if self.forward_messages and processed_message is not None:
+            self._forward_message(topic, headers, processed_message)
+        
+    def _passes_filter(self, message):
+        """
+        Check if message passes filter criteria.
+        
+        Filtering can be based on:
+        - Presence of specific keys
+        - Value ranges
+        - Message type
+        
+        Args:
+            message: The message to filter
+            
+        Returns:
+            True if message should be processed, False to skip
+        """
+        if not self.filter_keys:
+            # No filter keys defined, pass everything
+            return True
+        
+        if not isinstance(message, dict):
+            # Can't filter non-dict messages by keys
+            return False
+        
+        # Check if message contains all required keys
+        for key in self.filter_keys:
+            if key not in message:
+                return False
+        
+        return True
+        
+    def _process_message(self, topic, headers, message):
+        """
+        Process and optionally transform message data.
+        
+        This method can:
+        - Extract specific fields
+        - Calculate derived values
+        - Aggregate data
+        - Format data for output
+        
+        Args:
+            topic: Topic where message was published
+            headers: Message headers
+            message: Original message
+            
+        Returns:
+            Processed message or None to skip forwarding
+        """
+        if not self.transform_data:
+            # No transformation, return original
+            return message
+        
+        # Example transformation: Add metadata
+        if isinstance(message, dict):
+            transformed = message.copy()
+            transformed['_metadata'] = {
+                'original_topic': topic,
+                'processed_by': '{{VIP_IDENTITY}}',
+                'timestamp': utils.format_timestamp(utils.get_aware_utcnow())
+            }
+            return transformed
+        
+        # For non-dict messages, wrap in dict with metadata
+        return {
+            'data': message,
+            '_metadata': {
+                'original_topic': topic,
+                'processed_by': '{{VIP_IDENTITY}}',
+                'timestamp': utils.format_timestamp(utils.get_aware_utcnow())
+            }
+        }
+        
+    def _forward_message(self, original_topic, headers, message):
+        """
+        Forward processed message to output topics.
+        
+        Args:
+            original_topic: Topic where message originated
+            headers: Original message headers
+            message: Processed message to forward
+        """
+        if not self.publish_topics:
+            _log.debug("No publish topics configured, skipping forward")
+            return
+        
+        for topic in self.publish_topics:
+            try:
+                self.vip.pubsub.publish(
+                    peer='pubsub',
+                    topic=topic,
+                    headers=headers,
+                    message=message
+                )
+                _log.debug("Forwarded message to topic: %s", topic)
+                
+            except Exception as e:
+                _log.error("Failed to forward message to %s: %s", topic, e)
+        
+    def _reset_rate_limit(self):
+        """
+        Reset message counter for rate limiting.
+        
+        Called periodically to allow new messages after rate limit window.
+        """
+        if self.message_count > 0:
+            _log.debug("Rate limit reset. Processed %d messages in last window", self.message_count)
+        self.message_count = 0
+        
+    @RPC.export
+    def get_stats(self):
+        """
+        RPC method to get listener statistics.
+        
+        Other agents can call this via:
+        agent.vip.rpc.call('{{VIP_IDENTITY}}', 'get_stats').get()
+        
+        Returns:
+            Dictionary with listener statistics
+        """
+        return {
+            'messages_received': self.message_count,
+            'subscribed_topics': self.subscribe_topics,
+            'publish_topics': self.publish_topics,
+            'filter_enabled': self.filter_enabled,
+            'uptime_seconds': (utils.get_aware_utcnow() - self.last_reset_time).total_seconds()
+        }
+        
+    @RPC.export
+    def set_filter(self, enabled, keys=None):
+        """
+        RPC method to dynamically update filter settings.
+        
+        Args:
+            enabled: Whether to enable filtering
+            keys: List of required keys for filtering
+            
+        Returns:
+            Success message
+        """
+        self.filter_enabled = enabled
+        if keys is not None:
+            self.filter_keys = keys
+        
+        _log.info("Filter updated: enabled=%s, keys=%s", enabled, keys)
+        return {"status": "success", "filter_enabled": enabled, "filter_keys": self.filter_keys}
+        
+    @Core.receiver("onstop")
+    def onstop(self, sender, **kwargs):
+        """
+        Cleanup when agent stops.
+        """
+        _log.info("Listener Agent {{VIP_IDENTITY}} stopping...")
+        _log.info("Total messages processed: %d", self.message_count)
+
+
+def main():
+    """Main entry point for the listener agent."""
+    utils.vip_main({{AGENT_NAME}}ListenerAgent, version=__version__)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

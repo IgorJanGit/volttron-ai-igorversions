@@ -12,6 +12,8 @@ A modern chat application built with FastAPI and Pydantic-AI that supports multi
 - 🏗️ **VOLTTRON Integration**: Control VOLTTRON platform with natural language commands
 - 🌐 **Generic Path Detection**: Automatically finds VOLTTRON installations on any system
 - 🧠 **Intelligent Command Discovery**: AI can learn and execute vctl commands dynamically
+- 🔨 **Agent Creator**: Guided wizard to scaffold custom VOLTTRON agents with 4 template types
+- 📚 **Extensive Comments**: Generated agents include detailed explanations of VOLTTRON patterns
 
 ## Installation
 
@@ -141,6 +143,225 @@ The application automatically detects VOLTTRON installations in common locations
 - PATH environment variable
 
 If VOLTTRON is not found, the assistant provides installation instructions.
+
+### Agent Creator
+
+The AI assistant includes a guided wizard for creating custom VOLTTRON agents. This feature scaffolds complete agent projects with extensive comments explaining VOLTTRON patterns.
+
+**How to Use:**
+
+Simply ask the AI to create an agent:
+```
+You: "Create a new agent"
+```
+
+The wizard will guide you through 10 steps with detailed explanations:
+
+1. **Agent Name** - Unique name for your agent (e.g., `temperature-monitor`)
+   - *Learn about:* Naming conventions, package structure
+   
+2. **VIP Identity** - VIP identity string (e.g., `monitor.agent`)
+   - *Learn about:* VOLTTRON Interconnect Protocol, inter-agent communication
+   
+3. **Description** - What the agent does
+   - *Learn about:* Documentation best practices
+   
+4. **Documentation URL (Optional)** - Link to API docs, GitHub repo, or documentation
+   - *Learn about:* AI-powered analysis, automatic recommendations
+   - *Supports:* API documentation, GitHub repos, service docs
+   - *Get:* Implementation guidance as TODO comments in your code
+   
+5. **Template Type** - Choose from 4 templates (see below)
+   - *Learn about:* Agent patterns, use cases, VOLTTRON architecture
+   - *Options:* minimal, listener, driver, historian
+   
+6. **Subscribe Topics** - Topics to listen to
+   - *Learn about:* Pub/sub messaging, topic structure, wildcards
+   - *Examples:* Device topics, system topics, custom patterns
+   
+7. **Publish Topics** - Topics to publish to
+   - *Learn about:* Topic naming conventions, VOLTTRON standards
+   - *Examples:* Device data, analysis results, status updates
+   
+8. **Schedule** - Periodic tasks (interval or cron)
+   - *Learn about:* Scheduling patterns, periodic vs cron, use cases
+   - *Options:* none, interval (every N seconds), cron (specific times)
+   
+9. **Dependencies** - Additional Python packages
+   - *Learn about:* Package management, common libraries
+   - *Examples:* requests, pandas, numpy, paho-mqtt
+   
+10. **Packaging** - Wheel or editable install
+    - *Learn about:* Python packaging, development vs production
+    - *Options:* wheel (production), editable (development)
+
+**🎓 Educational Features:**
+Each step includes:
+- ✅ Clear explanation of VOLTTRON concepts
+- ✅ Best practices and conventions  
+- ✅ Real-world examples
+- ✅ Links to official documentation
+- ✅ Common patterns and use cases
+
+**Available Templates:**
+
+| Template | Purpose | Use Case |
+|----------|---------|----------|
+| **minimal** | Basic agent with VIP connection | Learning VOLTTRON, simple monitoring |
+| **listener** | Data pipeline with filtering/transformation | Topic monitoring, data forwarding |
+| **driver** | Device interface with scheduled polling | Hardware integration, data acquisition |
+| **historian** | Data storage with batching and queries | Persistence, analytics, reporting |
+
+**What Gets Generated:**
+
+```
+agents/<agent-name>/
+├── <agent_name>/
+│   ├── __init__.py
+│   └── agent.py          # Main agent code with extensive comments
+├── config/
+│   └── default_config.json
+├── tests/
+│   └── test_agent.py
+├── pyproject.toml        # PEP 517 project metadata
+└── README.md             # Usage instructions
+```
+
+**Features:**
+
+- ✅ **Extensively Commented Code** - Every function and pattern explained
+- ✅ **AI-Powered URL Analysis** - Paste any documentation URL and get implementation recommendations
+- ✅ **Best Practices** - Follows VOLTTRON conventions for topics, configs, lifecycle
+- ✅ **Ready to Run** - Builds wheel and installs with one command
+- ✅ **Customizable** - Templates include TODO markers for easy modification
+- ✅ **Validation** - Checks agent names and VIP identity collisions
+
+**🆕 URL Analysis Feature:**
+
+When creating an agent, you can provide a URL to any documentation (API docs, GitHub repo, service documentation) and the AI will:
+- Fetch and analyze the content
+- Identify authentication methods
+- Suggest API endpoints or data sources
+- Recommend dependencies
+- Generate implementation TODO comments in your code
+- Include full recommendations in README
+
+**Example with URL Analysis:**
+
+```
+You: "Create a new agent"
+AI: "Step 1/10: What's your agent name?"
+
+You: "weather-service"
+AI: "Step 2/10: What VIP identity?"
+
+You: "weather.service"
+AI: "Step 3/10: Describe your agent..."
+
+You: "Fetches weather data from external API"
+AI: "Step 4/10: Documentation URL (Optional)..."
+
+You: "https://openweathermap.org/api"
+AI: "🔍 Analyzing URL... ✅ Analysis Complete!
+     Found: REST API, requires API key, JSON responses
+     Recommendations will be included in generated code.
+     
+     Step 5/10: Template Type..."
+
+... (continues through remaining steps) ...
+```
+
+The generated agent will include detailed comments like:
+```python
+# Implementation Recommendations Based on https://openweathermap.org/api
+#
+# TODO: API Integration
+# - Endpoint: https://api.openweathermap.org/data/2.5/weather
+# - Authentication: API key in query parameter
+# - Response format: JSON
+# - Add 'requests' to dependencies
+#
+# TODO: Configuration
+# - api_key: Store in config or environment variable
+# - base_url: API endpoint
+# - update_interval: How often to fetch data
+```
+
+**Example Workflow (Without URL):**
+
+```
+You: "Create a new agent"
+AI: "Step 1/10: What's your agent name?"
+
+You: "temperature-monitor"
+AI: "Step 2/10: What VIP identity?"
+
+You: "monitor.temp"
+AI: "Step 3/10: Describe your agent..."
+
+... (continues through 10 steps) ...
+
+AI: "Agent project created at agents/temperature-monitor/
+     Building package... Done!
+     Install with: vctl install agents/temperature-monitor --vip-identity monitor.temp --start"
+
+You: "Install the agent"
+AI: "Agent installed and started successfully!"
+```
+
+**Manual Installation (if preferred):**
+
+```bash
+# After wizard completes, navigate to generated project
+cd agents/temperature-monitor
+
+# Build wheel package
+python -m build -w
+
+# Install to VOLTTRON
+vctl install dist/temperature_monitor-0.1.0-py3-none-any.whl \
+  --vip-identity monitor.temp \
+  --agent-config config/default_config.json \
+  --start --force
+
+# Or install in editable mode for development
+pip install -e .
+```
+
+**Template Details:**
+
+**Minimal Template:**
+- VIP connection and authentication
+- Configuration management via `vip.config`
+- Heartbeat publishing (every 30 seconds)
+- Topic subscription with message handling
+- `onstart`/`onstop` lifecycle management
+
+**Listener Template:**
+- All minimal features plus:
+- Configurable message filtering (by topic or keys)
+- Data transformation and enrichment
+- Message forwarding to output topics
+- Rate limiting (max messages per minute)
+- RPC methods for stats and filter control
+
+**Driver Template:**
+- All minimal features plus:
+- Scheduled device polling (interval or cron)
+- Point map configuration (name, type, units, writable, range)
+- Device protocol support (simulator, modbus, bacnet, API)
+- Standard VOLTTRON device topic publishing
+- Error handling with automatic retries
+- Connection management
+
+**Historian Template:**
+- All minimal features plus:
+- Data capture from multiple topics
+- Batching (100 records or 60 seconds)
+- SQLite storage (adaptable to PostgreSQL/MongoDB)
+- RPC query interface with time range filters
+- Automatic retention and cleanup
+- Stats tracking (records/topics/errors)
 
 ## Configuration
 
@@ -310,9 +531,16 @@ volttron-ai/
 │   ├── __main__.py              # Entry point and CLI
 │   ├── app.py                   # FastAPI application
 │   ├── ai_service.py            # AI model integration
+│   ├── agent_creator.py         # Agent scaffolding and wizard
 │   ├── volttron_commands.py     # VOLTTRON platform control
 │   └── templates/
-│       └── chat.html            # Web interface
+│       ├── chat.html            # Web interface
+│       └── agent_templates/     # Agent code templates
+│           ├── minimal.py.template
+│           ├── listener.py.template
+│           ├── driver.py.template
+│           └── historian.py.template
+├── agents/                      # Generated agent projects (created at runtime)
 ├── tests/                       # Test suite
 │   ├── test_intelligent_discovery.py
 │   ├── test_discovery_quick.py

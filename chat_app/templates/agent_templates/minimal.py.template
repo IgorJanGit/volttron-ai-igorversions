@@ -1,0 +1,298 @@
+"""
+{{DESCRIPTION}}
+
+This is a minimal VOLTTRON agent created by the Agent Creator.
+It demonstrates the basic structure and lifecycle of a VOLTTRON agent.
+
+Author: {{AUTHOR}}
+Version: {{VERSION}}
+"""
+
+import logging
+from volttron.platform.agent import utils
+from volttron.platform.vip.agent import Agent, Core
+
+# Setup logging for the agent
+# This creates a logger that will output to the VOLTTRON log file
+utils.setup_logging()
+_log = logging.getLogger(__name__)
+
+__version__ = "{{VERSION}}"
+
+
+class {{AGENT_NAME}}Agent(Agent):
+    """
+    Minimal VOLTTRON Agent
+    
+    This agent demonstrates the fundamental components of a VOLTTRON agent:
+    
+    1. **VIP Connection**: Connects to the VOLTTRON message bus using the
+       Virtual Integration Platform (VIP) protocol
+       
+    2. **Configuration Management**: Handles configuration updates dynamically
+       without requiring agent restart
+       
+    3. **Lifecycle Management**: Properly handles start/stop events
+    
+    4. **Periodic Tasks**: Demonstrates scheduled operations (heartbeat)
+    
+    5. **Pub/Sub Messaging**: Shows how to publish and subscribe to topics
+    
+    VIP Identity: {{VIP_IDENTITY}}
+    """
+    
+    def __init__(self, config_path, **kwargs):
+        """
+        Initialize the agent.
+        
+        The __init__ method is called when the agent is first created.
+        This is where you set up default configuration and register
+        configuration callbacks.
+        
+        Args:
+            config_path: Path to the agent's configuration file
+            **kwargs: Additional keyword arguments passed by the platform
+        """
+        super({{AGENT_NAME}}Agent, self).__init__(**kwargs)
+        
+        # Default configuration values
+        # These will be used if no configuration file is provided
+        self.default_config = {
+            "heartbeat_period": 30,  # Send heartbeat every 30 seconds
+            "message": "Hello from {{AGENT_NAME}}!"
+        }
+        
+        # Set the default configuration in the config store
+        # This makes it available via 'vctl config' commands
+        self.vip.config.set_default("config", self.default_config)
+        
+        # Subscribe to configuration changes
+        # This callback will be triggered when configuration is updated
+        self.vip.config.subscribe(
+            self._configure,
+            actions=["NEW", "UPDATE"],
+            pattern="config"
+        )
+        
+    def _configure(self, config_name, action, contents):
+        """
+        Handle configuration updates.
+        
+        This method is called automatically when the agent's configuration
+        is created or updated. It allows the agent to respond to configuration
+        changes without restarting.
+        
+        Args:
+            config_name: Name of the configuration being updated (usually "config")
+            action: Type of action - "NEW" for first time, "UPDATE" for changes
+            contents: Dictionary containing the new configuration values
+        """
+        # Start with default configuration
+        config = self.default_config.copy()
+        
+        # Update with new values from config store
+        config.update(contents)
+        
+        _log.info("Configuration updated for {{AGENT_NAME}}: %s", config)
+        
+        # Extract configuration values and store as instance variables
+        self.heartbeat_period = config.get("heartbeat_period", 30)
+        self.message = config.get("message", "Hello!")
+        
+        # You can add validation here
+        if self.heartbeat_period < 5:
+            _log.warning("Heartbeat period too short, using minimum of 5 seconds")
+            self.heartbeat_period = 5
+        
+    @Core.receiver("onstart")
+    def onstart(self, sender, **kwargs):
+        """
+        Called when the agent starts.
+        
+        This is the main entry point for agent initialization. Use this method to:
+        - Subscribe to message bus topics
+        - Start periodic tasks
+        - Initialize connections to external systems
+        - Load data or restore state
+        
+        The agent is fully initialized and connected to the platform when this runs.
+        
+        Args:
+            sender: The component that sent the start signal
+            **kwargs: Additional keyword arguments
+        """
+        _log.info("Agent {{VIP_IDENTITY}} starting...")
+        
+        # Subscribe to topics if configured
+        # Topics are patterns that can use wildcards:
+        # - 'devices/#' subscribes to all device topics
+        # - 'devices/campus/building1/#' subscribes to all topics under building1
+        topics_to_subscribe = {{TOPICS_SUBSCRIBE}}
+        
+        if topics_to_subscribe:
+            for topic in topics_to_subscribe:
+                self.vip.pubsub.subscribe(
+                    peer='pubsub',  # Subscribe via the pubsub subsystem
+                    prefix=topic,   # Topic pattern to match
+                    callback=self._handle_message  # Method to call when message received
+                )
+                _log.info("Subscribed to topic: %s", topic)
+        
+        # Start periodic heartbeat task
+        # The core.periodic method schedules a function to run repeatedly
+        # Period is in seconds
+        self.core.periodic(self.heartbeat_period, self._send_heartbeat)
+        
+        _log.info("Agent {{VIP_IDENTITY}} started successfully")
+        _log.info("Publishing to topics: {{TOPICS_PUBLISH}}")
+        
+    def _handle_message(self, peer, sender, bus, topic, headers, message):
+        """
+        Handle incoming messages from subscribed topics.
+        
+        This callback is invoked whenever a message is published to a topic
+        that matches our subscription pattern.
+        
+        Message Structure:
+        - peer: Usually 'pubsub' for published messages
+        - sender: VIP identity of the agent that published the message
+        - bus: Message bus name (usually the topic prefix)
+        - topic: Full topic string where the message was published
+        - headers: Dictionary of message metadata (timestamps, content-type, etc.)
+        - message: The actual message payload (can be any JSON-serializable data)
+        
+        Args:
+            peer: Peer name (usually 'pubsub')
+            sender: VIP identity of message sender
+            bus: Message bus identifier
+            topic: Topic the message was published to
+            headers: Message headers dictionary
+            message: Message payload (dict, list, string, etc.)
+        """
+        _log.info("=" * 50)
+        _log.info("Received message on topic: %s", topic)
+        _log.info("From sender: %s", sender)
+        _log.info("Headers: %s", headers)
+        _log.info("Message: %s", message)
+        _log.info("=" * 50)
+        
+        # Process the message
+        # Example: Extract data, perform calculations, trigger actions
+        
+        try:
+            # Check message type and handle accordingly
+            if isinstance(message, dict):
+                # Handle dictionary messages (most common)
+                _log.debug("Processing dict message with %d keys", len(message))
+                
+                # Example: React to specific message content
+                if 'command' in message:
+                    command = message['command']
+                    _log.info("Received command: %s", command)
+                    # Handle command here
+                    
+            elif isinstance(message, list):
+                # Handle list messages
+                _log.debug("Processing list message with %d items", len(message))
+                
+            else:
+                # Handle other message types
+                _log.debug("Processing message of type: %s", type(message))
+                
+        except Exception as e:
+            _log.error("Error processing message: %s", e, exc_info=True)
+        
+    def _send_heartbeat(self):
+        """
+        Send periodic heartbeat message.
+        
+        This method demonstrates basic publishing to the VOLTTRON message bus.
+        Heartbeats are useful for:
+        - Monitoring agent health
+        - Proving the agent is alive and responsive
+        - Periodic status updates
+        
+        The heartbeat includes:
+        - Current timestamp
+        - Agent status
+        - Optional custom data
+        """
+        # Get current UTC timestamp in VOLTTRON format
+        timestamp = utils.format_timestamp(utils.get_aware_utcnow())
+        
+        # Create heartbeat message
+        heartbeat_message = {
+            'agent_id': '{{VIP_IDENTITY}}',
+            'status': 'running',
+            'timestamp': timestamp,
+            'message': self.message
+        }
+        
+        # Publish to configured topics
+        topics_to_publish = {{TOPICS_PUBLISH}}
+        
+        if not topics_to_publish:
+            # Default heartbeat topic if none configured
+            topics_to_publish = ['heartbeat/{{VIP_IDENTITY}}']
+        
+        for topic in topics_to_publish:
+            try:
+                self.vip.pubsub.publish(
+                    peer='pubsub',           # Publish via pubsub subsystem
+                    topic=topic,              # Topic to publish to
+                    message=heartbeat_message # Message payload
+                )
+                _log.debug("Heartbeat published to: %s", topic)
+                
+            except Exception as e:
+                _log.error("Failed to publish heartbeat to %s: %s", topic, e)
+        
+    @Core.receiver("onstop")
+    def onstop(self, sender, **kwargs):
+        """
+        Called when the agent stops.
+        
+        Use this method to:
+        - Close connections to external systems
+        - Save agent state
+        - Release resources
+        - Clean up temporary files
+        - Cancel pending operations
+        
+        The platform will wait for this method to complete before
+        shutting down the agent process.
+        
+        Args:
+            sender: The component that sent the stop signal
+            **kwargs: Additional keyword arguments
+        """
+        _log.info("Agent {{VIP_IDENTITY}} stopping...")
+        
+        # Perform cleanup operations here
+        # Example: Close database connections, save state, etc.
+        
+        _log.info("Agent {{VIP_IDENTITY}} stopped successfully")
+
+
+def main():
+    """
+    Main entry point for the agent.
+    
+    This function is called when the agent is started via command line
+    or by the VOLTTRON platform. It uses the vip_main utility to:
+    - Parse command line arguments
+    - Load configuration
+    - Create agent instance
+    - Connect to the VOLTTRON platform
+    - Run the agent
+    """
+    utils.vip_main({{AGENT_NAME}}Agent, version=__version__)
+
+
+if __name__ == "__main__":
+    # Allow the agent to be run directly for testing
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        pass

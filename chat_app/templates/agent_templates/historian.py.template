@@ -1,0 +1,461 @@
+"""
+{{DESCRIPTION}}
+
+This is a Historian-style VOLTTRON agent created by the Agent Creator.
+It subscribes to data topics, batches data, and writes to a storage backend.
+
+Author: {{AUTHOR}}
+Version: {{VERSION}}
+"""
+
+import logging
+import sqlite3
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from volttron.platform.agent import utils
+from volttron.platform.vip.agent import Agent, Core, RPC
+
+# Setup logging
+utils.setup_logging()
+_log = logging.getLogger(__name__)
+
+__version__ = "{{VERSION}}"
+
+
+class {{AGENT_NAME}}HistorianAgent(Agent):
+    """
+    Historian-Style VOLTTRON Agent
+    
+    This agent demonstrates the Historian pattern for data persistence.
+    
+    **Key Features:**
+    
+    1. **Data Collection**: Subscribes to device and analysis topics
+    2. **Batching**: Accumulates data before writing to reduce I/O
+    3. **Storage Backend**: Writes to SQLite (can be adapted for PostgreSQL, MongoDB, etc.)
+    4. **Query Interface**: Provides RPC methods to retrieve historical data
+    5. **Data Retention**: Supports configurable data aging and cleanup
+    
+    **Database Schema:**
+    - topic: Topic where data was published
+    - timestamp: When data was captured
+    - data: JSON-encoded message payload
+    - meta: Additional metadata
+    
+    **Use Cases:**
+    - Long-term data archival
+    - Time-series analysis
+    - Compliance and audit trails
+    - Data export and reporting
+    - Pattern recognition and trending
+    
+    VIP Identity: {{VIP_IDENTITY}}
+    """
+    
+    def __init__(self, config_path, **kwargs):
+        """
+        Initialize the historian agent.
+        """
+        super({{AGENT_NAME}}HistorianAgent, self).__init__(**kwargs)
+        
+        # Default configuration
+        self.default_config = {
+            # Topics to record
+            "capture_topics": {{TOPICS_SUBSCRIBE}},
+            
+            # Storage settings
+            "database_path": "historian.db",  # Relative to VOLTTRON_HOME
+            "database_type": "sqlite",  # sqlite, postgresql, mongodb
+            
+            # Batching settings
+            "batch_size": 100,  # Number of records to batch
+            "max_batch_time": 60,  # Max seconds to hold batch
+            
+            # Retention settings
+            "retention_days": 365,  # Keep data for 1 year
+            "cleanup_interval": 86400,  # Run cleanup daily
+            
+            # Performance settings
+            "async_writes": True,
+            "compression": False
+        }
+        
+        # Runtime state
+        self.batch_queue = []
+        self.last_batch_time = utils.get_aware_utcnow()
+        self.records_written = 0
+        self.db_connection = None
+        
+        # Set default and subscribe to config changes
+        self.vip.config.set_default("config", self.default_config)
+        self.vip.config.subscribe(self._configure, actions=["NEW", "UPDATE"], pattern="config")
+        
+    def _configure(self, config_name, action, contents):
+        """
+        Handle configuration updates.
+        """
+        config = self.default_config.copy()
+        config.update(contents)
+        
+        _log.info("Historian configuration updated: %s", config)
+        
+        # Store configuration
+        self.capture_topics = config.get("capture_topics", [])
+        self.database_path = config.get("database_path", "historian.db")
+        self.database_type = config.get("database_type", "sqlite")
+        self.batch_size = config.get("batch_size", 100)
+        self.max_batch_time = config.get("max_batch_time", 60)
+        self.retention_days = config.get("retention_days", 365)
+        self.cleanup_interval = config.get("cleanup_interval", 86400)
+        self.async_writes = config.get("async_writes", True)
+        self.compression = config.get("compression", False)
+        
+    @Core.receiver("onstart")
+    def onstart(self, sender, **kwargs):
+        """
+        Initialize database and subscriptions when agent starts.
+        """
+        _log.info("Historian Agent {{VIP_IDENTITY}} starting...")
+        
+        # Initialize database
+        self._initialize_database()
+        
+        # Subscribe to configured topics
+        if self.capture_topics:
+            for topic in self.capture_topics:
+                self.vip.pubsub.subscribe(
+                    peer='pubsub',
+                    prefix=topic,
+                    callback=self._capture_data
+                )
+                _log.info("Capturing data from topic: %s", topic)
+        else:
+            _log.warning("No topics configured for capture!")
+        
+        # Start periodic batch flush
+        self.core.periodic(10, self._flush_batch_if_needed)
+        
+        # Start periodic cleanup
+        if self.retention_days > 0:
+            self.core.periodic(self.cleanup_interval, self._cleanup_old_data)
+        
+        _log.info("Historian Agent started successfully")
+        
+    def _initialize_database(self):
+        """
+        Initialize the database connection and schema.
+        
+        Creates tables if they don't exist and sets up indexes.
+        """
+        _log.info("Initializing %s database at: %s", self.database_type, self.database_path)
+        
+        try:
+            if self.database_type == "sqlite":
+                # Make path absolute relative to VOLTTRON_HOME
+                volttron_home = os.environ.get("VOLTTRON_HOME", "~/.volttron")
+                db_path = Path(volttron_home).expanduser() / self.database_path
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                self.db_connection = sqlite3.connect(
+                    str(db_path),
+                    check_same_thread=False  # Allow use from multiple threads
+                )
+                
+                # Create tables
+                cursor = self.db_connection.cursor()
+                
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS historian_data (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        topic TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        meta TEXT,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Create indexes for efficient queries
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_topic_timestamp 
+                    ON historian_data(topic, timestamp)
+                """)
+                
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_timestamp 
+                    ON historian_data(timestamp)
+                """)
+                
+                self.db_connection.commit()
+                _log.info("SQLite database initialized successfully")
+                
+            elif self.database_type == "postgresql":
+                # Example PostgreSQL connection
+                # import psycopg2
+                # self.db_connection = psycopg2.connect(
+                #     host=config.get("pg_host", "localhost"),
+                #     database=config.get("pg_database", "volttron"),
+                #     user=config.get("pg_user", "volttron"),
+                #     password=config.get("pg_password", "")
+                # )
+                _log.warning("PostgreSQL support not implemented, add psycopg2 library")
+                
+            elif self.database_type == "mongodb":
+                # Example MongoDB connection
+                # from pymongo import MongoClient
+                # self.db_connection = MongoClient(config.get("mongo_uri", "mongodb://localhost:27017/"))
+                _log.warning("MongoDB support not implemented, add pymongo library")
+                
+        except Exception as e:
+            _log.error("Failed to initialize database: %s", e, exc_info=True)
+            self.db_connection = None
+        
+    def _capture_data(self, peer, sender, bus, topic, headers, message):
+        """
+        Capture incoming data for storage.
+        
+        This callback receives all messages on subscribed topics and
+        queues them for batch writing.
+        
+        Args:
+            peer: Peer name
+            sender: Message sender
+            bus: Message bus
+            topic: Topic where message was published
+            headers: Message headers
+            message: Message payload
+        """
+        _log.debug("Capturing data from topic: %s", topic)
+        
+        try:
+            # Extract timestamp from headers or use current time
+            timestamp = headers.get('Date') or utils.format_timestamp(utils.get_aware_utcnow())
+            
+            # Create data record
+            record = {
+                'topic': topic,
+                'timestamp': timestamp,
+                'data': json.dumps(message),
+                'meta': json.dumps({
+                    'sender': sender,
+                    'headers': headers
+                })
+            }
+            
+            # Add to batch queue
+            self.batch_queue.append(record)
+            
+            # Flush batch if size threshold reached
+            if len(self.batch_queue) >= self.batch_size:
+                self._flush_batch()
+                
+        except Exception as e:
+            _log.error("Error capturing data: %s", e, exc_info=True)
+        
+    def _flush_batch_if_needed(self):
+        """
+        Flush batch if time threshold exceeded.
+        
+        Called periodically to ensure data isn't held too long.
+        """
+        if not self.batch_queue:
+            return
+        
+        time_since_last_flush = (utils.get_aware_utcnow() - self.last_batch_time).total_seconds()
+        
+        if time_since_last_flush >= self.max_batch_time:
+            self._flush_batch()
+        
+    def _flush_batch(self):
+        """
+        Write batched data to database.
+        
+        This is where the actual I/O happens. Batching reduces
+        database overhead and improves performance.
+        """
+        if not self.batch_queue:
+            return
+        
+        if not self.db_connection:
+            _log.error("No database connection, dropping %d records", len(self.batch_queue))
+            self.batch_queue = []
+            return
+        
+        _log.info("Flushing batch of %d records to database", len(self.batch_queue))
+        
+        try:
+            if self.database_type == "sqlite":
+                cursor = self.db_connection.cursor()
+                
+                cursor.executemany(
+                    "INSERT INTO historian_data (topic, timestamp, data, meta) VALUES (?, ?, ?, ?)",
+                    [(r['topic'], r['timestamp'], r['data'], r['meta']) for r in self.batch_queue]
+                )
+                
+                self.db_connection.commit()
+                
+            elif self.database_type == "postgresql":
+                # PostgreSQL batch insert
+                pass
+                
+            elif self.database_type == "mongodb":
+                # MongoDB batch insert
+                pass
+            
+            # Update stats
+            self.records_written += len(self.batch_queue)
+            self.batch_queue = []
+            self.last_batch_time = utils.get_aware_utcnow()
+            
+            _log.info("Batch flushed successfully. Total records: %d", self.records_written)
+            
+        except Exception as e:
+            _log.error("Error flushing batch: %s", e, exc_info=True)
+        
+    def _cleanup_old_data(self):
+        """
+        Remove data older than retention period.
+        
+        Helps manage database size and comply with data retention policies.
+        """
+        if not self.db_connection or self.retention_days <= 0:
+            return
+        
+        _log.info("Cleaning up data older than %d days", self.retention_days)
+        
+        try:
+            cutoff_date = utils.get_aware_utcnow() - timedelta(days=self.retention_days)
+            cutoff_str = utils.format_timestamp(cutoff_date)
+            
+            if self.database_type == "sqlite":
+                cursor = self.db_connection.cursor()
+                
+                # Count records to delete
+                cursor.execute("SELECT COUNT(*) FROM historian_data WHERE timestamp < ?", (cutoff_str,))
+                count = cursor.fetchone()[0]
+                
+                if count > 0:
+                    # Delete old records
+                    cursor.execute("DELETE FROM historian_data WHERE timestamp < ?", (cutoff_str,))
+                    self.db_connection.commit()
+                    _log.info("Deleted %d old records", count)
+                    
+                    # Vacuum to reclaim space
+                    cursor.execute("VACUUM")
+                else:
+                    _log.debug("No old records to clean up")
+                    
+        except Exception as e:
+            _log.error("Error during cleanup: %s", e, exc_info=True)
+        
+    @RPC.export
+    def query_data(self, topic=None, start_time=None, end_time=None, limit=1000):
+        """
+        RPC method to query historical data.
+        
+        Other agents can call this via:
+        data = agent.vip.rpc.call('{{VIP_IDENTITY}}', 'query_data', 
+                                    topic='devices/#', 
+                                    start_time='2024-01-01T00:00:00').get()
+        
+        Args:
+            topic: Topic filter (supports wildcards)
+            start_time: ISO timestamp for start of range
+            end_time: ISO timestamp for end of range
+            limit: Maximum records to return
+            
+        Returns:
+            List of data records
+        """
+        if not self.db_connection:
+            return {"error": "No database connection"}
+        
+        try:
+            if self.database_type == "sqlite":
+                cursor = self.db_connection.cursor()
+                
+                query = "SELECT topic, timestamp, data FROM historian_data WHERE 1=1"
+                params = []
+                
+                if topic:
+                    # Convert VOLTTRON wildcard to SQL LIKE pattern
+                    topic_pattern = topic.replace('#', '%').replace('*', '%')
+                    query += " AND topic LIKE ?"
+                    params.append(topic_pattern)
+                
+                if start_time:
+                    query += " AND timestamp >= ?"
+                    params.append(start_time)
+                
+                if end_time:
+                    query += " AND timestamp <= ?"
+                    params.append(end_time)
+                
+                query += " ORDER BY timestamp DESC LIMIT ?"
+                params.append(limit)
+                
+                cursor.execute(query, params)
+                
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        'topic': row[0],
+                        'timestamp': row[1],
+                        'data': json.loads(row[2])
+                    })
+                
+                return {"records": results, "count": len(results)}
+                
+        except Exception as e:
+            _log.error("Error querying data: %s", e, exc_info=True)
+            return {"error": str(e)}
+        
+    @RPC.export
+    def get_stats(self):
+        """
+        Get historian statistics.
+        
+        Returns:
+            Dictionary with historian stats
+        """
+        return {
+            'records_written': self.records_written,
+            'batch_queue_size': len(self.batch_queue),
+            'last_batch_time': utils.format_timestamp(self.last_batch_time),
+            'database_type': self.database_type,
+            'capture_topics': self.capture_topics
+        }
+        
+    @Core.receiver("onstop")
+    def onstop(self, sender, **kwargs):
+        """
+        Cleanup when agent stops.
+        """
+        _log.info("Historian Agent {{VIP_IDENTITY}} stopping...")
+        
+        # Flush any remaining batched data
+        if self.batch_queue:
+            _log.info("Flushing final batch of %d records", len(self.batch_queue))
+            self._flush_batch()
+        
+        # Close database connection
+        if self.db_connection:
+            self.db_connection.close()
+            _log.info("Database connection closed")
+        
+        _log.info("Total records written: %d", self.records_written)
+
+
+import os
+
+def main():
+    """Main entry point for the historian agent."""
+    utils.vip_main({{AGENT_NAME}}HistorianAgent, version=__version__)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

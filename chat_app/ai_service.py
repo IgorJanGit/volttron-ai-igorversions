@@ -31,6 +31,12 @@ from .volttron_commands import (
     setup_postgresql_database, create_historian_config
 )
 
+from .agent_creator import (
+    collect_requirements, generate_templates, write_agent_project,
+    build_package, install_agent_package, validate_agent_name,
+    validate_vip_identity, AgentRequirements, analyze_url_for_agent
+)
+
 if Agent is not None:
     agent = Agent(
         model=None,
@@ -1593,6 +1599,281 @@ Please specify which agent to uninstall. Examples:
                 db_config: Database configuration parameters
             """
             return create_historian_config(historian_type, db_config)
+        
+        # Agent Creator Tools
+        @self.agent.tool_plain
+        def start_agent_creator_tool() -> str:
+            """Start the guided agent creation wizard.
+            
+            This tool initiates a step-by-step process to create a custom VOLTTRON agent.
+            Use this when the user wants to:
+            - Create a new agent
+            - Build a custom agent
+            - Develop their own agent
+            
+            Returns:
+                Initial greeting and first step prompt
+            """
+            # Initialize wizard state in conversation history
+            conversation_history = self._load_conversation_history()
+            
+            conversation_history["agent_creator_active"] = True
+            conversation_history["agent_creator_step"] = 1
+            conversation_history["agent_requirements"] = {}
+            
+            self._save_conversation_history(conversation_history)
+            
+            welcome = """
+🎉 **Welcome to the VOLTTRON Agent Creator!**
+
+This wizard will help you build a production-ready VOLTTRON agent with:
+
+✨ **Automated Code Generation**
+   - Complete agent structure with all required files
+   - Extensively commented code explaining VOLTTRON patterns
+   - Best practices built-in (error handling, logging, configuration)
+
+🎓 **Educational Guidance**
+   - Each step explains VOLTTRON concepts
+   - Links to official documentation
+   - Examples for common use cases
+
+🤖 **AI-Powered Analysis** (NEW!)
+   - Paste any API documentation URL
+   - Get implementation recommendations automatically
+   - TODO comments guide you through integration
+
+📚 **What You'll Get:**
+   - `agent.py` - Your agent code with detailed comments
+   - `pyproject.toml` - Package configuration
+   - `README.md` - Installation and usage guide
+   - `config/default_config.json` - Configuration template
+   - `tests/test_agent.py` - Test skeleton
+
+**🚀 Process:**
+10 quick steps → Generate code → Build package → Install to VOLTTRON
+
+**📖 Reference Documentation:**
+https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
+
+Let's create your agent!
+
+"""
+            
+            # Get first step prompt
+            req = AgentRequirements()
+            _, _, first_prompt = collect_requirements({}, 1, "")
+            
+            return welcome + first_prompt
+        
+        @self.agent.tool_plain
+        def agent_creator_next_step_tool(user_input: str) -> str:
+            """Advance to the next step in the agent creation wizard.
+            
+            This tool processes the user's response to the current step and
+            provides the next step's prompt.
+            
+            Args:
+                user_input: User's response to current wizard step
+                
+            Returns:
+                Next step prompt or completion message
+            """
+            conversation_history = self._load_conversation_history()
+            
+            if not conversation_history.get("agent_creator_active"):
+                return "❌ Agent creator not active. Start with 'create a new agent' first."
+            
+            current_step = conversation_history.get("agent_creator_step", 1)
+            req_data = conversation_history.get("agent_requirements", {})
+            
+            # Collect requirements
+            req, next_step, next_prompt = collect_requirements(
+                {"agent_requirements": req_data},
+                current_step,
+                user_input
+            )
+            
+            # If step 3.6 (URL analysis), analyze the URL
+            if next_step == 3.6 and req.url:
+                try:
+                    recommendations = analyze_url_for_agent(req.url, req.description)
+                    req.ai_recommendations = recommendations
+                    next_prompt = f"✅ **URL Analysis Complete!**\n\n{recommendations[:500]}...\n\n(Full recommendations will be included in generated code)\n\nPress Enter to continue to template selection."
+                    # Auto-advance to step 4 after showing recommendations
+                    next_step = 4
+                except Exception as e:
+                    next_prompt = f"⚠️ Could not analyze URL: {str(e)}\n\nContinuing without URL analysis. Press Enter to continue."
+                    next_step = 4
+            
+            # Update conversation history
+            conversation_history["agent_creator_step"] = next_step
+            conversation_history["agent_requirements"] = req.to_dict()
+            
+            if next_step > 9:
+                # All steps complete, trigger scaffolding
+                conversation_history["agent_creator_active"] = False
+                self._save_conversation_history(conversation_history)
+                
+                return next_prompt + "\n\n" + agent_scaffold_tool()
+            else:
+                self._save_conversation_history(conversation_history)
+                return next_prompt
+        
+        @self.agent.tool_plain
+        def agent_scaffold_tool() -> str:
+            """Generate agent project files based on collected requirements.
+            
+            This tool creates the complete agent project structure with:
+            - Agent code with extensive comments
+            - pyproject.toml for packaging
+            - README.md with usage instructions
+            - Configuration files
+            - Tests
+            
+            Returns:
+                Status message and project location
+            """
+            conversation_history = self._load_conversation_history()
+            req_data = conversation_history.get("agent_requirements", {})
+            
+            if not req_data:
+                return "❌ No agent requirements found. Start the agent creator first."
+            
+            req = AgentRequirements.from_dict(req_data)
+            
+            # Validate name
+            valid, msg = validate_agent_name(req.name)
+            if not valid:
+                return msg
+            
+            # Validate VIP identity
+            valid, msg = validate_vip_identity(req.vip_identity)
+            if not valid:
+                return msg
+            
+            try:
+                # Generate project
+                project_dir = write_agent_project(req)
+                
+                # Store project directory in conversation history
+                conversation_history["agent_project_dir"] = project_dir
+                conversation_history["agent_package_format"] = req.package_format
+                self._save_conversation_history(conversation_history)
+                
+                return f"""✅ **Agent project created successfully!**
+
+**Location:** `{project_dir}`
+
+**Generated Files:**
+- `{req.name.replace('-', '_')}/agent.py` - Main agent code with detailed comments
+- `pyproject.toml` - Project metadata and dependencies
+- `README.md` - Usage instructions and documentation
+- `config/default_config.json` - Default configuration
+- `tests/test_agent.py` - Basic unit tests
+
+**Next Steps:**
+
+1. **Review the code** - Check `{project_dir}/{req.name.replace('-', '_')}/agent.py`
+2. **Build the package** - I'll do this next automatically
+3. **Install and test** - We'll install it into VOLTTRON
+
+Ready to build the package? (Proceed automatically...)
+"""
+            except Exception as e:
+                return f"❌ Error creating agent project: {str(e)}"
+        
+        @self.agent.tool_plain
+        def agent_package_tool() -> str:
+            """Build the agent package (wheel or editable install).
+            
+            This tool packages the agent for installation using the format
+            specified during creation (wheel or editable).
+            
+            Returns:
+                Build status and package location
+            """
+            conversation_history = self._load_conversation_history()
+            project_dir = conversation_history.get("agent_project_dir")
+            package_format = conversation_history.get("agent_package_format", "wheel")
+            
+            if not project_dir:
+                return "❌ No agent project found. Create an agent first."
+            
+            success, message = build_package(project_dir, package_format)
+            
+            if success:
+                # Store build status
+                conversation_history["agent_built"] = True
+                self._save_conversation_history(conversation_history)
+                
+                return message + "\n\n**Ready to install?** Say 'install my agent' or I can do it automatically now."
+            else:
+                return message
+        
+        @self.agent.tool_plain
+        def agent_install_tool(start_agent: bool = True) -> str:
+            """Install the created agent into VOLTTRON.
+            
+            This tool installs the agent using vctl and optionally starts it.
+            
+            Args:
+                start_agent: Whether to start the agent after installation (default: True)
+                
+            Returns:
+                Installation status and next steps
+            """
+            conversation_history = self._load_conversation_history()
+            project_dir = conversation_history.get("agent_project_dir")
+            req_data = conversation_history.get("agent_requirements", {})
+            
+            if not project_dir:
+                return "❌ No agent project found. Create an agent first."
+            
+            if not req_data:
+                return "❌ No agent requirements found."
+            
+            req = AgentRequirements.from_dict(req_data)
+            
+            # Check if agent was built
+            if not conversation_history.get("agent_built"):
+                # Build first
+                success, build_msg = build_package(project_dir, req.package_format)
+                if not success:
+                    return f"❌ Build failed before installation:\n{build_msg}"
+            
+            # Install using vctl
+            success, message = install_agent_package(
+                project_dir,
+                req.vip_identity,
+                start=start_agent,
+                method="vctl"
+            )
+            
+            if success:
+                conversation_history["agent_installed"] = True
+                self._save_conversation_history(conversation_history)
+                
+                return message + f"""
+
+🎉 **Congratulations!** Your agent is now running!
+
+**What's next?**
+
+• **Check status:** Say 'show agent status' or 'vctl status'
+• **View logs:** Say 'show logs' to see your agent in action
+• **Configure:** Edit `{project_dir}/config/default_config.json` and update with `vctl config store`
+• **Modify code:** The agent is in `{project_dir}`, edit and reinstall
+• **Create another:** Say 'create a new agent' to make another one!
+
+**Agent Details:**
+- Name: {req.name}
+- VIP Identity: {req.vip_identity}
+- Template: {req.template_type}
+- Location: {project_dir}
+"""
+            else:
+                return message
 
     def _register_volttron_tools_on_agent(self, agent):
         """Register VOLTTRON control tools on a specific agent."""
@@ -1656,6 +1937,15 @@ Please specify which agent to uninstall. Examples:
             "- Or use 'intelligent_vctl_command_discovery' to automatically find and run the right command\n"
             "- Learn from help output and pick the best command\n"
             "- Keep context from previous help queries\n\n"
+            "AGENT CREATOR:\n"
+            "- When user wants to create a custom agent, use start_agent_creator_tool\n"
+            "- Guide through 10 steps: name, VIP identity, description, URL (optional), template type, topics, schedule, dependencies, packaging\n"
+            "- **URL Analysis**: User can provide documentation URL and AI analyzes it for implementation recommendations\n"
+            "- Supports: API docs, GitHub repos, service documentation\n"
+            "- AI recommendations are included as TODO comments in generated code\n"
+            "- Template types: minimal (basic), listener (data pipeline), driver (device polling), historian (data storage)\n"
+            "- Wizard automatically scaffolds, builds, and offers to install the agent\n"
+            "- Generated agents include extensive comments explaining VOLTTRON patterns\n\n"
             "TOOLS AVAILABLE:\n"
             "- start_volttron_tool: Start VOLTTRON\n"
             "- stop_volttron_tool: Stop VOLTTRON\n"
@@ -1668,6 +1958,11 @@ Please specify which agent to uninstall. Examples:
             "- create_historian_config_tool: Create historian configuration\n"
             "- run_vctl_help: Get vctl help (general or specific command)\n"
             "- intelligent_vctl_command_discovery: Auto-discover and run vctl commands\n"
+            "- start_agent_creator_tool: Create custom VOLTTRON agents (use for 'create agent' requests)\n"
+            "- agent_creator_next_step_tool: Advance through agent creation wizard\n"
+            "- agent_scaffold_tool: Generate agent project files\n"
+            "- agent_package_tool: Build agent package (wheel or editable)\n"
+            "- agent_install_tool: Install agent to VOLTTRON\n"
             "- install_listener_agent_tool: Install listener\n"
             "- list_agents_tool: List agents\n"
             "- And other VOLTTRON management tools\n\n"

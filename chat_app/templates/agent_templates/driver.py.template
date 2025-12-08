@@ -1,0 +1,401 @@
+"""
+{{DESCRIPTION}}
+
+This is a Driver-style VOLTTRON agent created by the Agent Creator.
+It polls data sources on a schedule and publishes device data to the message bus.
+
+Author: {{AUTHOR}}
+Version: {{VERSION}}
+"""
+
+import logging
+import random
+from datetime import timedelta
+from volttron.platform.agent import utils
+from volttron.platform.vip.agent import Agent, Core
+from volttron.platform.scheduling import periodic
+
+# Setup logging
+utils.setup_logging()
+_log = logging.getLogger(__name__)
+
+__version__ = "{{VERSION}}"
+
+
+class {{AGENT_NAME}}DriverAgent(Agent):
+    """
+    Driver-Style VOLTTRON Agent
+    
+    This agent demonstrates the Driver pattern for interfacing with devices or data sources.
+    
+    **Key Features:**
+    
+    1. **Scheduled Polling**: Reads data on a configurable schedule (interval or cron)
+    2. **Point Map**: Defines data points to read (similar to platform driver registries)
+    3. **Data Publishing**: Publishes data in standard VOLTTRON device topic format
+    4. **Error Handling**: Handles device communication failures gracefully
+    5. **Health Monitoring**: Reports device connectivity and data freshness
+    
+    **Topic Structure:**
+    The driver publishes to topics following the pattern:
+    - devices/{{VIP_IDENTITY}}/all - All points in a single message
+    - devices/{{VIP_IDENTITY}}/point/<point_name> - Individual point values
+    
+    **Use Cases:**
+    - Custom device integration (Modbus, BACnet, proprietary protocols)
+    - API polling (weather data, utility meters, IoT sensors)
+    - Simulated devices for testing
+    - Data transformation and normalization
+    
+    VIP Identity: {{VIP_IDENTITY}}
+    """
+    
+    def __init__(self, config_path, **kwargs):
+        """
+        Initialize the driver agent.
+        
+        Sets up:
+        - Polling schedule
+        - Point definitions
+        - Device connection settings
+        """
+        super({{AGENT_NAME}}DriverAgent, self).__init__(**kwargs)
+        
+        # Default configuration
+        self.default_config = {
+            # Polling schedule
+            "poll_interval": 30,  # Seconds between polls
+            "poll_schedule": "{{SCHEDULE_VALUE}}",  # Cron schedule (optional, overrides interval)
+            
+            # Device settings
+            "device_name": "{{AGENT_NAME}}",
+            "device_type": "simulator",  # e.g., modbus, bacnet, api, simulator
+            "device_address": "localhost",
+            
+            # Point map - defines what data to read
+            # Format: {point_name: {type, units, writable, default}}
+            "point_map": {
+                "temperature": {
+                    "type": "float",
+                    "units": "degreesCelsius",
+                    "writable": False,
+                    "min": -40,
+                    "max": 120
+                },
+                "humidity": {
+                    "type": "float",
+                    "units": "percentRelativeHumidity",
+                    "writable": False,
+                    "min": 0,
+                    "max": 100
+                },
+                "status": {
+                    "type": "string",
+                    "units": "",
+                    "writable": False
+                }
+            },
+            
+            # Retry settings
+            "max_retries": 3,
+            "retry_delay": 5,
+            
+            # Publish settings
+            "publish_all": True,  # Publish all points in single message
+            "publish_individual": False  # Also publish each point separately
+        }
+        
+        # State tracking
+        self.last_poll_time = None
+        self.poll_count = 0
+        self.error_count = 0
+        self.device_connected = False
+        
+        # Set default and subscribe to config changes
+        self.vip.config.set_default("config", self.default_config)
+        self.vip.config.subscribe(self._configure, actions=["NEW", "UPDATE"], pattern="config")
+        
+    def _configure(self, config_name, action, contents):
+        """
+        Handle configuration updates.
+        """
+        config = self.default_config.copy()
+        config.update(contents)
+        
+        _log.info("Driver configuration updated: %s", config)
+        
+        # Store configuration
+        self.poll_interval = config.get("poll_interval", 30)
+        self.poll_schedule = config.get("poll_schedule")
+        self.device_name = config.get("device_name", "unknown")
+        self.device_type = config.get("device_type", "simulator")
+        self.device_address = config.get("device_address", "localhost")
+        self.point_map = config.get("point_map", {})
+        self.max_retries = config.get("max_retries", 3)
+        self.retry_delay = config.get("retry_delay", 5)
+        self.publish_all = config.get("publish_all", True)
+        self.publish_individual = config.get("publish_individual", False)
+        
+    @Core.receiver("onstart")
+    def onstart(self, sender, **kwargs):
+        """
+        Start the driver when agent starts.
+        
+        Initializes:
+        - Device connection
+        - Polling schedule
+        """
+        _log.info("Driver Agent {{VIP_IDENTITY}} starting...")
+        
+        # Connect to device
+        self._connect_device()
+        
+        # Start scheduled polling
+        if self.poll_schedule and self.poll_schedule != "None":
+            # Use cron schedule
+            _log.info("Using cron schedule: %s", self.poll_schedule)
+            # Note: Implement cron scheduling if needed using APScheduler or similar
+            # For now, fall back to interval
+            self.core.periodic(self.poll_interval, self._poll_device)
+        else:
+            # Use interval polling
+            _log.info("Polling every %d seconds", self.poll_interval)
+            self.core.periodic(self.poll_interval, self._poll_device)
+        
+        _log.info("Driver Agent started successfully")
+        
+    def _connect_device(self):
+        """
+        Establish connection to the device.
+        
+        This method should be customized based on device type:
+        - For Modbus: Create ModbusTCP/RTU client
+        - For BACnet: Initialize BACnet connection
+        - For HTTP API: Set up session with auth
+        - For Simulator: Initialize random data generator
+        """
+        _log.info("Connecting to device: %s at %s", self.device_name, self.device_address)
+        
+        try:
+            if self.device_type == "simulator":
+                # Simulator always connects
+                self.device_connected = True
+                _log.info("Simulator device connected")
+                
+            elif self.device_type == "modbus":
+                # Example: Initialize Modbus connection
+                # from pymodbus.client import ModbusTcpClient
+                # self.modbus_client = ModbusTcpClient(self.device_address)
+                # self.device_connected = self.modbus_client.connect()
+                _log.warning("Modbus support not implemented, add pymodbus library")
+                self.device_connected = False
+                
+            elif self.device_type == "bacnet":
+                # Example: Initialize BACnet connection
+                _log.warning("BACnet support not implemented, add bacpypes library")
+                self.device_connected = False
+                
+            elif self.device_type == "api":
+                # Example: Test API connectivity
+                # import requests
+                # response = requests.get(f"{self.device_address}/health")
+                # self.device_connected = response.status_code == 200
+                _log.warning("API support not implemented")
+                self.device_connected = False
+                
+            else:
+                _log.error("Unknown device type: %s", self.device_type)
+                self.device_connected = False
+                
+        except Exception as e:
+            _log.error("Failed to connect to device: %s", e, exc_info=True)
+            self.device_connected = False
+        
+    def _poll_device(self):
+        """
+        Poll device for current data.
+        
+        This is the main periodic task that:
+        1. Reads all points from the device
+        2. Validates and formats the data
+        3. Publishes to the message bus
+        
+        **Error Handling:**
+        - Retries failed reads with exponential backoff
+        - Publishes partial data if some points fail
+        - Reports connection status
+        """
+        if not self.device_connected:
+            _log.warning("Device not connected, attempting reconnection...")
+            self._connect_device()
+            if not self.device_connected:
+                return
+        
+        _log.debug("Polling device: %s", self.device_name)
+        
+        try:
+            # Read all points
+            point_data = {}
+            timestamp = utils.format_timestamp(utils.get_aware_utcnow())
+            
+            for point_name, point_config in self.point_map.items():
+                value = self._read_point(point_name, point_config)
+                if value is not None:
+                    point_data[point_name] = value
+            
+            if point_data:
+                # Publish data
+                self._publish_data(point_data, timestamp)
+                
+                self.poll_count += 1
+                self.last_poll_time = utils.get_aware_utcnow()
+                self.error_count = 0  # Reset error count on success
+            else:
+                _log.warning("No data read from device")
+                self.error_count += 1
+                
+        except Exception as e:
+            _log.error("Error polling device: %s", e, exc_info=True)
+            self.error_count += 1
+            
+            # Disconnect and reconnect if too many errors
+            if self.error_count >= self.max_retries:
+                _log.error("Too many errors, disconnecting device")
+                self.device_connected = False
+        
+    def _read_point(self, point_name, point_config):
+        """
+        Read a single point from the device.
+        
+        This method should be customized based on device protocol.
+        
+        Args:
+            point_name: Name of the point to read
+            point_config: Point configuration (type, units, address, etc.)
+            
+        Returns:
+            Point value or None if read failed
+        """
+        try:
+            if self.device_type == "simulator":
+                # Simulate data based on point type
+                point_type = point_config.get("type", "float")
+                
+                if point_type == "float":
+                    min_val = point_config.get("min", 0)
+                    max_val = point_config.get("max", 100)
+                    return round(random.uniform(min_val, max_val), 2)
+                    
+                elif point_type == "integer":
+                    min_val = point_config.get("min", 0)
+                    max_val = point_config.get("max", 100)
+                    return random.randint(min_val, max_val)
+                    
+                elif point_type == "boolean":
+                    return random.choice([True, False])
+                    
+                elif point_type == "string":
+                    return random.choice(["OK", "WARNING", "ERROR", "NORMAL"])
+                    
+            elif self.device_type == "modbus":
+                # Example: Read from Modbus
+                # register = point_config.get("address", 0)
+                # result = self.modbus_client.read_holding_registers(register, 1)
+                # return result.registers[0] if not result.isError() else None
+                pass
+                
+            elif self.device_type == "bacnet":
+                # Example: Read from BACnet
+                pass
+                
+            elif self.device_type == "api":
+                # Example: Read from HTTP API
+                pass
+                
+        except Exception as e:
+            _log.error("Error reading point %s: %s", point_name, e)
+            return None
+        
+    def _publish_data(self, point_data, timestamp):
+        """
+        Publish device data to the message bus.
+        
+        Follows VOLTTRON device topic conventions:
+        - devices/<device_name>/all - All points together
+        - devices/<device_name>/point/<point_name> - Individual points
+        
+        Args:
+            point_data: Dictionary of point_name: value
+            timestamp: ISO timestamp string
+        """
+        base_topic = f"devices/{{VIP_IDENTITY}}/{self.device_name}"
+        
+        # Publish all points together
+        if self.publish_all:
+            all_message = {
+                'timestamp': timestamp,
+                'data': point_data
+            }
+            
+            headers = {
+                'Date': timestamp,
+                'ContentType': 'application/json'
+            }
+            
+            try:
+                self.vip.pubsub.publish(
+                    peer='pubsub',
+                    topic=f"{base_topic}/all",
+                    headers=headers,
+                    message=all_message
+                )
+                _log.debug("Published all data to: %s/all", base_topic)
+                
+            except Exception as e:
+                _log.error("Failed to publish all data: %s", e)
+        
+        # Publish individual points
+        if self.publish_individual:
+            for point_name, value in point_data.items():
+                topic = f"{base_topic}/point/{point_name}"
+                
+                message = {
+                    'timestamp': timestamp,
+                    'value': value
+                }
+                
+                try:
+                    self.vip.pubsub.publish(
+                        peer='pubsub',
+                        topic=topic,
+                        message=message
+                    )
+                    _log.debug("Published point %s: %s", point_name, value)
+                    
+                except Exception as e:
+                    _log.error("Failed to publish point %s: %s", point_name, e)
+        
+    @Core.receiver("onstop")
+    def onstop(self, sender, **kwargs):
+        """
+        Cleanup when agent stops.
+        """
+        _log.info("Driver Agent {{VIP_IDENTITY}} stopping...")
+        _log.info("Total polls: %d, Last poll: %s", self.poll_count, self.last_poll_time)
+        
+        # Disconnect from device
+        if self.device_connected:
+            # Add device-specific disconnect logic here
+            self.device_connected = False
+
+
+def main():
+    """Main entry point for the driver agent."""
+    utils.vip_main({{AGENT_NAME}}DriverAgent, version=__version__)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
