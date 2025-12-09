@@ -5,6 +5,62 @@ import shutil
 import requests
 import json
 from pathlib import Path
+import re
+
+
+def install_missing_package(package_name, pip_path=None):
+    """
+    Install a missing Python package.
+    
+    Args:
+        package_name: Name of the package to install (e.g., 'zope.event')
+        pip_path: Optional pip path to use. If None, will detect from environment.
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Get pip path if not provided
+        if pip_path is None:
+            pip_path, error = get_pip_command_from_venv()
+            if error:
+                return False, error
+        
+        print(f"📦 Installing missing package: {package_name}")
+        result = subprocess.run(
+            [pip_path, 'install', package_name],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode == 0:
+            return True, f"✅ Successfully installed {package_name}"
+        else:
+            return False, f"❌ Failed to install {package_name}: {result.stderr}"
+            
+    except subprocess.TimeoutExpired:
+        return False, f"❌ Timeout while installing {package_name}"
+    except Exception as e:
+        return False, f"❌ Error installing {package_name}: {str(e)}"
+
+
+def extract_missing_module(error_output):
+    """
+    Extract the missing module name from an error message.
+    
+    Args:
+        error_output: Error output from a command
+    
+    Returns:
+        str or None: The missing module name, or None if not found
+    """
+    # Pattern: ModuleNotFoundError: No module named 'package.name'
+    pattern = r"ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]"
+    match = re.search(pattern, error_output)
+    if match:
+        return match.group(1)
+    return None
 
 
 def get_active_virtualenv():
@@ -1313,6 +1369,25 @@ def check_volttron_status(brief=True):
                 timeout=10
             )
             
+            # Check for missing module errors and try to auto-install
+            if result.returncode != 0 and result.stderr:
+                missing_module = extract_missing_module(result.stderr)
+                if missing_module:
+                    print(f"⚠️ Missing dependency detected: {missing_module}")
+                    success, message = install_missing_package(missing_module)
+                    print(message)
+                    
+                    if success:
+                        # Retry the command after installing the missing package
+                        print("🔄 Retrying vctl status after installing dependency...")
+                        result = subprocess.run(
+                            cmd_str,
+                            shell=True,
+                            capture_output=True, 
+                            text=True,
+                            timeout=10
+                        )
+            
             if result.returncode == 0:
                 if brief:
                     return "✅ VOLTTRON is running"
@@ -1419,6 +1494,26 @@ def vctl_list_agents():
             timeout=15
         )
         
+        # Check for missing module errors and try to auto-install
+        if result.returncode != 0 and result.stderr:
+            missing_module = extract_missing_module(result.stderr)
+            if missing_module:
+                print(f"⚠️ Missing dependency detected: {missing_module}")
+                success, message = install_missing_package(missing_module)
+                print(message)
+                
+                if success:
+                    # Retry the command after installing the missing package
+                    print("🔄 Retrying vctl status after installing dependency...")
+                    result = subprocess.run(
+                        cmd_str,
+                        shell=True,
+                        capture_output=True, 
+                        text=True,
+                        env=env,
+                        timeout=15
+                    )
+        
         if result.returncode == 0:
             combined_output = ""
             if result.stderr and "UUID" in result.stderr:
@@ -1481,6 +1576,26 @@ def vctl_start_agent(agent_uuid_or_tag):
             cwd=volttron_home,
             timeout=10
         )
+        
+        # Check for missing module errors and try to auto-install
+        if status_result.returncode != 0 and status_result.stderr:
+            missing_module = extract_missing_module(status_result.stderr)
+            if missing_module:
+                print(f"⚠️ Missing dependency detected: {missing_module}")
+                success, message = install_missing_package(missing_module)
+                print(message)
+                
+                if success:
+                    # Retry the command after installing the missing package
+                    print("🔄 Retrying vctl status after installing dependency...")
+                    status_result = subprocess.run(
+                        [vctl_cmd, "status"], 
+                        capture_output=True, 
+                        text=True,
+                        env=env,
+                        cwd=volttron_home,
+                        timeout=10
+                    )
         
         if status_result.returncode != 0:
             return f"❌ Can't check agent status to verify '{agent_uuid_or_tag}' exists. VOLTTRON might not be responding properly."
