@@ -45,6 +45,17 @@ def create_app(model_name: str) -> FastAPI:
             "model_name": model_name
         })
     
+    @app.get("/favicon.ico")
+    async def favicon():
+        """
+        Favicon endpoint - returns 404 by default.
+        
+        Note: The browser automatically requests /favicon.ico for the tab icon.
+        This 404 response is purely cosmetic and does not affect functionality.
+        You can safely ignore "GET /favicon.ico HTTP/1.1 404" in logs.
+        """
+        raise HTTPException(status_code=404, detail="No favicon configured")
+    
     @app.post("/chat", response_model=ChatResponse)
     async def chat_endpoint(chat_message: ChatMessage):
         """Handle chat messages."""

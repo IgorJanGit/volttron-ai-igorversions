@@ -335,9 +335,9 @@ The generated agent will include comments like:
 # - Rate limiting: Respect 60 calls/minute limit
 ```
 
-**Note:** This step is OPTIONAL. Type 'skip' or 'none' if you don't have a URL.
+**Note:** This step is OPTIONAL. Leave blank, type 'skip', or 'none' if you don't have a URL.
 
-Enter documentation URL or 'skip':""",
+Enter documentation URL (or press Enter to skip):""",
 
         4: """🎨 **Step 5/10: Template Type**
 
@@ -705,13 +705,13 @@ Your choice:"""
     elif step == 3 and user_input:
         req.description = user_input.strip()
         
-    elif step == 3.5 and user_input:
-        # Handle optional URL input
-        if user_input.strip().lower() not in ["skip", "none", ""]:
+    elif step == 3.5:
+        # Handle optional URL input (including blank/empty responses)
+        if user_input and user_input.strip() and user_input.strip().lower() not in ["skip", "none"]:
             req.url = user_input.strip()
             # Will analyze URL in next step via tool
             return req, 3.6, "🔍 **Analyzing URL...**\n\nFetching and analyzing documentation. This may take a moment..."
-        # Skip URL analysis
+        # Skip URL analysis if blank, 'skip', or 'none'
         
     elif step == 3.6:
         # URL analysis complete, continue to template selection
