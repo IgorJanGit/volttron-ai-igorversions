@@ -155,8 +155,11 @@ class TestAgentCreationIntegration:
         # Verify pyproject.toml has correct content
         pyproject_content = (agent_project_path / "pyproject.toml").read_text()
         assert test_agent_name in pyproject_content
-        assert test_vip_identity in pyproject_content
         assert "volttron" in pyproject_content.lower()
+        
+        # Verify README has VIP identity
+        readme_content = (agent_project_path / "README.md").read_text()
+        assert test_vip_identity in readme_content
         
         # Verify agent.py has correct structure
         agent_py_path = agent_project_path / f"{test_agent_name.replace('-', '_')}" / "agent.py"
