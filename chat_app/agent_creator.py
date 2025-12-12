@@ -44,7 +44,7 @@ class AgentRequirements:
         self.schedule_type: Optional[str] = None  # None, "interval", "cron"
         self.schedule_value: Optional[str] = None  # e.g., "30s", "*/5 * * * *"
         self.rpc_methods: List[str] = []
-        self.dependencies: List[str] = ["volttron>=11.0.0rc0"]
+        self.dependencies: List[str] = []
         self.config_fields: Dict[str, str] = {}  # field_name: field_type
         self.package_format: str = "wheel"  # "wheel" or "editable"
         self.author: str = "VOLTTRON User"
@@ -1029,7 +1029,15 @@ __version__ = "{req.version}"
 def _generate_pyproject_toml(req: AgentRequirements) -> str:
     """Generate pyproject.toml for agent package."""
     package_name = req.name.replace("-", "_")
-    deps_str = '",\n    "'.join(req.dependencies)
+    
+    # Generate dependencies section - if empty, omit it entirely
+    if req.dependencies:
+        deps_str = '",\n    "'.join(req.dependencies)
+        dependencies_section = f'''dependencies = [
+    "{deps_str}"
+]'''
+    else:
+        dependencies_section = 'dependencies = []'
     
     return f'''[build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -1043,10 +1051,8 @@ authors = [
     {{name = "{req.author}"}}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "{deps_str}"
-]
+requires-python = ">=3.10"
+{dependencies_section}
 
 [project.scripts]
 {req.name} = "{package_name}.agent:main"
