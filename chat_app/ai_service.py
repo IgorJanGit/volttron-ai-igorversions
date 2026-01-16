@@ -332,7 +332,7 @@ if agent:
         return list_repository_packages()
 
     @agent.tool_plain
-    def run_vctl_help_tool(subcommand: str = None) -> str:
+    def run_vctl_help_tool(subcommand: Optional[str] = None) -> str:
         """Run vctl --help to learn about available commands.
         
         Use this tool when you don't know what vctl command to use or need to learn
