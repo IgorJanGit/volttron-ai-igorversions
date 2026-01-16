@@ -3353,7 +3353,6 @@ You can use "vctl status" to see all agents and their tags."""
         if max_score > 0:
             
             likely_category = max(scores, key=scores.get)  # type: ignore[arg-type]
-https://eclipse-volttron.readthedocs.io/en/latest/developing-volttron/developing-agents/agent-development.html            
             
             tied_categories = [cat for cat, score in scores.items() if score == max_score]
             
