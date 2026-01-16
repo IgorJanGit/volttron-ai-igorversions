@@ -2321,6 +2321,10 @@ Ready to build the package? (Proceed automatically...)
             "- Generated agents include extensive comments explaining VOLTTRON patterns\n"
             "\n"
             "**AGENT CREATOR CONTEXT MODE:**\n"
+            "**CRITICAL: IMMEDIATELY call agent_creator_next_step_tool with user's raw input - DO NOT re-ask or clarify**\n"
+            "- Every user message when wizard is active = direct input to current step\n"
+            "- NO confirmation loops - call the tool and let wizard logic handle validation\n"
+            "- If you made a suggestion and user says 'yes' = use YOUR suggestion as the tool input\n"
             "When agent_creator_active is True (wizard is running):\n"
             "- Treat ALL user input as answers to the current wizard step\n"
             "- DO NOT interpret input as general questions\n"
@@ -3349,7 +3353,7 @@ You can use "vctl status" to see all agents and their tags."""
         if max_score > 0:
             
             likely_category = max(scores, key=scores.get)  # type: ignore[arg-type]
-            
+https://eclipse-volttron.readthedocs.io/en/latest/developing-volttron/developing-agents/agent-development.html            
             
             tied_categories = [cat for cat, score in scores.items() if score == max_score]
             
