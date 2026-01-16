@@ -1389,7 +1389,7 @@ class AIService:
             return vctl_uninstall_all_listeners()
         elif ('verify uninstall' in title or 'check uninstall' in title or 'confirm removal' in title or 
               'verify removal' in title or 'check if' in title or 'check removal' in title):
-            words = message.lower().split()
+            words = title.lower().split()
             agent_id = None
             
             for i, word in enumerate(words):
@@ -1424,7 +1424,7 @@ Please specify which agent to verify removal of. Examples:
 
 Use 'vctl status' to see current agents if you're unsure."""
         elif 'uninstall' in title or 'remove agent' in title or 'delete agent' in title:
-            words = message.lower().split()
+            words = title.lower().split()
             agent_id = None
             
             for i, word in enumerate(words):
