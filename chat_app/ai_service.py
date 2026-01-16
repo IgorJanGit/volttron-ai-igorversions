@@ -3272,47 +3272,6 @@ You can use "vctl status" to see all agents and their tags."""
         return None  
     
 
-    def _detect_context_reversal(self, message: str) -> Tuple[bool, str]:
-        """Enhanced contextual reversal detection with conversation history analysis."""
-        message_lower = message.lower().strip()
-        
-        reversal_phrases = [
-            'i changed my mind', 'change my mind', 'changed my mind',
-            'i want to undo', 'undo that', 'undo it', 'undo',
-            'reverse that', 'reverse it', 'go back',
-            'i dont want', "i don't want", 'cancel that', 'cancel',
-            'nevermind', 'never mind', 'forget it', 'forget that',
-            'actually no', 'wait no', 'no wait',
-            'i made a mistake', 'that was wrong', 'wrong choice',
-            'i want the opposite', 'do the opposite'
-        ]
-        
-        is_reversal = any(phrase in message_lower for phrase in reversal_phrases)
-        
-        if is_reversal and self.last_action:
-            self.awaiting_reversal_confirmation = True
-            
-            if self.last_action == "install_agent":
-                agent_type = self.last_action_details.get("agent_type", "agent")
-                return True, f"It sounds like you want to uninstall the {agent_type} agent that was just installed. Should I uninstall it for you?"
-            elif self.last_action == "uninstall_agent":
-                agent_type = self.last_action_details.get("agent_type", "agent")
-                return True, f"It sounds like you want to reinstall the {agent_type} agent that was just removed. Should I install it again for you?"
-            elif self.last_action == "start_volttron":
-                return True, "It sounds like you want to stop VOLTTRON that was just started. Should I stop it for you?"
-            elif self.last_action == "stop_volttron":
-                return True, "It sounds like you want to start VOLTTRON that was just stopped. Should I start it for you?"
-            elif self.last_action == "start_agent":
-                agent_id = self.last_action_details.get("agent_id", "agent")
-                return True, f"It sounds like you want to stop agent '{agent_id}' that was just started. Should I stop it for you?"
-            elif self.last_action == "stop_agent":
-                agent_id = self.last_action_details.get("agent_id", "agent")
-                return True, f"It sounds like you want to start agent '{agent_id}' that was just stopped. Should I start it for you?"
-            else:
-                return True, "I understand you want to reverse something, but I'm not sure what. Can you be more specific about what you'd like me to undo?"
-        
-        return False, ""
-    
     def _handle_whats_running_question(self, message_lower: str) -> str:
         """Handle 'what's running' questions with context analysis and clarification."""
         
