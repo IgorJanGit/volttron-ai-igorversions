@@ -2450,7 +2450,7 @@ Ready to build the package? (Proceed automatically...)
                 context_message = f"\n\nRecent conversation:\n" + "\n".join(conversation_messages)
             
            
-            result = await self.agent.arun(message + context_message)
+            result = await self.agent.run(message + context_message)
             
           
             self.conversation_history.append({"role": "user", "content": message})
