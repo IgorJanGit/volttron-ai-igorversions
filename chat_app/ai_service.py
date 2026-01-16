@@ -2206,39 +2206,39 @@ Ready to build the package? (Proceed automatically...)
 
     def _register_volttron_tools_on_agent(self, agent):
         """Register VOLTTRON control tools on a specific agent."""
-    @agent.tool_plain  # type: ignore[union-attr]
-        def start_volttron_tool() -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def start_volttron_tool() -> str:
             """Start the VOLTTRON platform."""
             return start_volttron()
         
-    @agent.tool_plain  # type: ignore[union-attr]
-        def stop_volttron_tool() -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def stop_volttron_tool() -> str:
             """Stop the VOLTTRON platform."""
             return stop_volttron()
         
-    @agent.tool_plain  # type: ignore[union-attr]
-        def check_volttron_status_tool() -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def check_volttron_status_tool() -> str:
             """Check VOLTTRON platform status and show recent logs."""
             return check_volttron_status()
             
-    @agent.tool_plain  # type: ignore[union-attr]
-        def simple_volttron_status_check_tool() -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def simple_volttron_status_check_tool() -> str:
             """Simple check if VOLTTRON is running with minimal output."""
             return simple_volttron_status_check()
         
-    @agent.tool_plain  # type: ignore[union-attr]
-        def list_agents_tool() -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def list_agents_tool() -> str:
             """List all installed VOLTTRON agents."""
             return vctl_list_agents()
         
-    @agent.tool_plain  # type: ignore[union-attr]
-        def install_agent_tool(agent_name: str) -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def install_agent_tool(agent_name: str) -> str:
             """Install a VOLTTRON agent by name."""
             return vctl_install_agent(agent_name)
     
         
-    @agent.tool_plain  # type: ignore[union-attr]
-        def start_agent_creator_tool() -> str:
+        @agent.tool_plain  # type: ignore[union-attr]
+            def start_agent_creator_tool() -> str:
             """Start the agent creation wizard to build a custom VOLTTRON agent.
             
             Use this tool when the user wants to create a new agent, build a custom agent,
