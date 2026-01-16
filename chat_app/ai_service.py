@@ -2331,6 +2331,8 @@ Ready to build the package? (Proceed automatically...)
             "  - Step 3 (Description): Reference the agent name and VIP identity when asking\n"
             "  - All suggestions should be BASED ON what user provided in earlier steps\n"
             "- If user says 'yes', 'yeah', 'ok', 'continue', 'next' → Call agent_creator_next_step_tool with their previous answer\n"
+            "- When YOU make a suggestion and user says 'yes' → Call agent_creator_next_step_tool with YOUR suggested value (not empty)\n"
+            "  - Example: You suggest 'service.catfacts', user says 'yes' → Call tool with 'service.catfacts'\n"
             "- If user provides URL in message → Extract and acknowledge it, continue wizard\n"
             "- If user says 'I don't know', 'not sure', 'help' for VIP identity → Suggest one based on agent name\n"
             "- If user says 'skip', 'leave blank', 'nothing', 'no' → Call agent_creator_next_step_tool with EMPTY STRING \"\"\n"
