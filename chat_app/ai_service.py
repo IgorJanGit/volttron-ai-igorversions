@@ -1571,7 +1571,9 @@ Let's create your agent!
         req = AgentRequirements()
         _, _, first_prompt = collect_requirements({}, 1, "")
         
-        return welcome + first_prompt
+        # Add CTA to first step
+        first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1)
+        return welcome + first_prompt_with_cta
     
     def _agent_creator_next_step_impl(self, user_input):
         """Implementation for advancing to next step in agent creator wizard."""
@@ -2014,7 +2016,9 @@ Let's create your agent!
             req = AgentRequirements()
             _, _, first_prompt = collect_requirements({}, 1, "")
             
-            return welcome + first_prompt
+            # Add CTA to first step
+        first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1)
+        return welcome + first_prompt_with_cta
         
         @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_creator_next_step_tool(user_input: str) -> str:
