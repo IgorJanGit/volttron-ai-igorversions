@@ -2498,7 +2498,7 @@ Ready to build the package? (Proceed automatically...)
                 if self.custom_client:
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
-                        messages=messages,
+                        messages=messages,  # type: ignore[arg-type]
                         tools=tools,
                         tool_choice="auto",
                         max_tokens=1000,
@@ -2508,7 +2508,7 @@ Ready to build the package? (Proceed automatically...)
                     client = openai.OpenAI()
                     response = client.chat.completions.create(
                         model=self.model_name,
-                        messages=messages,
+                        messages=messages,  # type: ignore[arg-type]
                         tools=tools,
                         tool_choice="auto",
                         max_tokens=1000,
@@ -2577,7 +2577,7 @@ Ready to build the package? (Proceed automatically...)
                 if self.custom_client:
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
-                        messages=messages,
+                        messages=messages,  # type: ignore[arg-type]
                         functions=function_schemas,
                         function_call="auto",
                         max_tokens=1000,
@@ -2587,7 +2587,7 @@ Ready to build the package? (Proceed automatically...)
                     client = openai.OpenAI()
                     response = client.chat.completions.create(
                         model=self.model_name,
-                        messages=messages,
+                        messages=messages,  # type: ignore[arg-type]
                         functions=function_schemas,
                         function_call="auto",
                         max_tokens=1000,
