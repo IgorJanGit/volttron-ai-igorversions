@@ -1741,32 +1741,32 @@ Ready to build the package? (Proceed automatically...)
 
     def _register_volttron_tools(self):
         """Register VOLTTRON control tools with the agent using Pydantic AI's tool system."""
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def start_volttron_tool() -> str:
             """Start the VOLTTRON platform."""
             return start_volttron()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def stop_volttron_tool() -> str:
             """Stop the VOLTTRON platform."""
             return stop_volttron()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def check_volttron_status_tool() -> str:
             """Check VOLTTRON platform status and show recent logs."""
             return check_volttron_status()
             
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def simple_volttron_status_check_tool() -> str:
             """Simple check if VOLTTRON is running with minimal output."""
             return simple_volttron_status_check()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def get_vctl_status_tool() -> str:
             """Get VOLTTRON platform status using vctl status command."""
             return vctl_status()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def read_volttron_log_tool(num_lines: int = 10) -> str:
             """Read recent VOLTTRON log entries.
             
@@ -1775,12 +1775,12 @@ Ready to build the package? (Proceed automatically...)
             """
             return read_volttron_log(num_lines)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def list_agents_tool() -> str:
             """List all installed VOLTTRON agents."""
             return vctl_list_agents()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def start_agent_tool(agent_uuid: str) -> str:
             """Start a VOLTTRON agent by UUID.
             
@@ -1789,7 +1789,7 @@ Ready to build the package? (Proceed automatically...)
             """
             return vctl_start_agent(agent_uuid)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def stop_agent_tool(agent_uuid: str) -> str:
             """Stop a VOLTTRON agent by UUID.
             
@@ -1798,7 +1798,7 @@ Ready to build the package? (Proceed automatically...)
             """
             return vctl_stop_agent(agent_uuid)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def install_agent_tool(agent_name: str) -> str:
             """Install a VOLTTRON agent by name.
             
@@ -1807,7 +1807,7 @@ Ready to build the package? (Proceed automatically...)
             """
             return vctl_install_agent(agent_name)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def uninstall_agent_tool(agent_uuid: str) -> str:
             """Uninstall a VOLTTRON agent by UUID (stop and remove).
             
@@ -1816,32 +1816,32 @@ Ready to build the package? (Proceed automatically...)
             """
             return vctl_uninstall_agent(agent_uuid)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def get_volttron_help_tool() -> str:
             """Get detailed VOLTTRON installation and setup help."""
             return get_detailed_installation_help()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def list_available_agents_tool() -> str:
             """Show all available VOLTTRON agents that can be installed."""
             return list_available_agents()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def vctl_status_detailed_tool() -> str:
             """Get detailed VOLTTRON platform and agent status."""
             return vctl_status_detailed()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def vctl_health_tool() -> str:
             """Check VOLTTRON platform health status."""
             return vctl_health()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def install_platform_driver_tool() -> str:
             """Install the VOLTTRON platform driver for device communication."""
             return vctl_install_platform_driver()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def show_recent_logs_tool(lines: int = 20) -> str:
             """Show recent VOLTTRON log entries.
             
@@ -1850,27 +1850,27 @@ Ready to build the package? (Proceed automatically...)
             """
             return show_recent_logs(lines)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def check_volttron_installation_tool() -> str:
             """Check if VOLTTRON is properly installed and configured."""
             return check_volttron_installation()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def kill_existing_processes_tool() -> str:
             """Kill any existing VOLTTRON processes (cleanup utility)."""
             return kill_existing_volttron_processes()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def uninstall_all_listeners_tool() -> str:
             """Uninstall all listener agents from the platform."""
             return vctl_uninstall_all_listeners()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def install_listener_agent_tool() -> str:
             """Install a listener agent for monitoring platform messages."""
             return vctl_install_listener_agent()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def verify_agent_uninstalled_tool(agent_name: str, verification_type: str = "comprehensive") -> str:
             """Verify that an agent has been completely uninstalled.
             
@@ -1880,17 +1880,17 @@ Ready to build the package? (Proceed automatically...)
             """
             return verify_agent_uninstalled(agent_name, verification_type)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def get_volttron_next_steps_tool() -> str:
             """Get suggested next steps for VOLTTRON development."""
             return get_volttron_next_steps()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def show_formatting_test_tool() -> str:
             """Show a formatting test to verify output display."""
             return show_formatting_test()
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def fetch_webpage_tool(url: str) -> str:
             """Fetch and read content from a webpage, especially useful for documentation.
             
@@ -1899,7 +1899,7 @@ Ready to build the package? (Proceed automatically...)
             """
             return fetch_webpage_content(url)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def execute_command_tool(command: str) -> str:
             """Execute a safe system command (checking, info gathering).
             
@@ -1908,7 +1908,7 @@ Ready to build the package? (Proceed automatically...)
             """
             return execute_system_command(command)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def setup_postgresql_tool(db_name: str = "volttron", db_user: str = "volttron", db_password: str = "volttron") -> str:
             """Set up PostgreSQL database for VOLTTRON historian.
             
@@ -1919,7 +1919,7 @@ Ready to build the package? (Proceed automatically...)
             """
             return setup_postgresql_database(db_name, db_user, db_password)
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def create_historian_config_tool(historian_type: str = "postgresql", db_config: dict = None) -> str:
             """Create historian agent configuration file.
             
@@ -1930,7 +1930,7 @@ Ready to build the package? (Proceed automatically...)
             return create_historian_config(historian_type, db_config)
         
         # Agent Creator Tools
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def start_agent_creator_tool() -> str:
             """Start the guided agent creation wizard.
             
@@ -1995,7 +1995,7 @@ Let's create your agent!
             
             return welcome + first_prompt
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_creator_next_step_tool(user_input: str) -> str:
             """Advance to the next step in the agent creation wizard.
             
@@ -2049,7 +2049,7 @@ Let's create your agent!
                 self._save_conversation_history(conversation_history)
                 return next_prompt
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_scaffold_tool() -> str:
             """Generate agent project files based on collected requirements.
             
@@ -2112,7 +2112,7 @@ Ready to build the package? (Proceed automatically...)
             except Exception as e:
                 return f"❌ Error creating agent project: {str(e)}"
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_package_tool() -> str:
             """Build the agent package (wheel or editable install).
             
@@ -2140,7 +2140,7 @@ Ready to build the package? (Proceed automatically...)
             else:
                 return message
         
-        @self.agent.tool_plain
+        @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_install_tool(start_agent: bool = True) -> str:
             """Install the created agent into VOLTTRON.
             
