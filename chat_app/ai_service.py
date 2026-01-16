@@ -2578,7 +2578,7 @@ Ready to build the package? (Proceed automatically...)
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
                         messages=messages,  # type: ignore[arg-type]
-                        functions=function_schemas,
+                        functions=function_schemas,  # type: ignore[arg-type]
                         function_call="auto",
                         max_tokens=1000,
                         temperature=0.7
@@ -2588,7 +2588,7 @@ Ready to build the package? (Proceed automatically...)
                     response = client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,  # type: ignore[arg-type]
-                        functions=function_schemas,
+                        functions=function_schemas,  # type: ignore[arg-type]
                         function_call="auto",
                         max_tokens=1000,
                         temperature=0.7
