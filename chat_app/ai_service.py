@@ -2549,7 +2549,7 @@ Ready to build the package? (Proceed automatically...)
                     if self.custom_client:
                         final_response = self.custom_client.chat.completions.create(
                             model=self.custom_model,
-                            messages=follow_up_messages,
+                            messages=follow_up_messages,  # type: ignore[arg-type]
                             tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
@@ -2559,7 +2559,7 @@ Ready to build the package? (Proceed automatically...)
                         client = openai.OpenAI()
                         final_response = client.chat.completions.create(
                             model=self.model_name,
-                            messages=follow_up_messages,
+                            messages=follow_up_messages,  # type: ignore[arg-type]
                             tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
@@ -2621,7 +2621,7 @@ Ready to build the package? (Proceed automatically...)
                     if self.custom_client:
                         final_response = self.custom_client.chat.completions.create(
                             model=self.custom_model,
-                            messages=follow_up_messages,
+                            messages=follow_up_messages,  # type: ignore[arg-type]
                             tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
@@ -2631,7 +2631,7 @@ Ready to build the package? (Proceed automatically...)
                         client = openai.OpenAI()
                         final_response = client.chat.completions.create(
                             model=self.model_name,
-                            messages=follow_up_messages,
+                            messages=follow_up_messages,  # type: ignore[arg-type]
                             tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
