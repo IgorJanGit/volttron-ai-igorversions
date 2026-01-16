@@ -380,6 +380,7 @@ class AIService:
         self.agent = agent
         self.custom_client = None
         self.conversation_history = []
+        self.agent_creator_state: dict = {}
         self.last_numbered_options = {}
         self.fake_driver_setup_state = "not_started"  # Track fake driver setup progress
         self.volttron_checked = False
@@ -1930,7 +1931,7 @@ Ready to build the package? (Proceed automatically...)
                 historian_type: Type of historian (postgresql, sqlite)
                 db_config: Database configuration parameters
             """
-            return create_historian_config(historian_type, db_config)
+            return create_historian_config(historian_type, db_config or {})
         
         # Agent Creator Tools
         @self.agent.tool_plain  # type: ignore[union-attr]
@@ -2520,8 +2521,8 @@ Ready to build the package? (Proceed automatically...)
                 # Check if Claude called a tool
                 if message_response.tool_calls:
                     tool_call = message_response.tool_calls[0]
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
+                    function_name = tool_call.function.name  # type: ignore[attr-defined]
+                    function_args = json.loads(tool_call.function.arguments)  # type: ignore[attr-defined]
                     
                     function_result = self.call_function_tool(function_name, function_args)
                     
@@ -2535,7 +2536,7 @@ Ready to build the package? (Proceed automatically...)
                                 "type": "function",
                                 "function": {
                                     "name": function_name,
-                                    "arguments": tool_call.function.arguments
+                                    "arguments": tool_call.function.arguments  # type: ignore[attr-defined]
                                 }
                             }]
                         },
@@ -2600,7 +2601,7 @@ Ready to build the package? (Proceed automatically...)
                     function_name = message_response.function_call.name
                     function_args = json.loads(message_response.function_call.arguments)
                     
-                    function_result = self.execute_function_call(function_name, function_args)
+                    function_result = self.call_function_tool(function_name, function_args)
                     
                     follow_up_messages = messages + [
                         {
@@ -3312,7 +3313,7 @@ You can use "vctl status" to see all agents and their tags."""
         
         if max_score > 0:
             
-            likely_category = max(scores, key=scores.get)
+            likely_category = max(scores, key=scores.get)  # type: ignore[arg-type]
             
             
             tied_categories = [cat for cat, score in scores.items() if score == max_score]
