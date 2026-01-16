@@ -2240,6 +2240,16 @@ Ready to build the package? (Proceed automatically...)
             """Install a VOLTTRON agent by name."""
             return vctl_install_agent(agent_name)
     
+        
+        @agent.tool_plain
+        def start_agent_creator_tool() -> str:
+            """Start the agent creation wizard to build a custom VOLTTRON agent.
+            
+            Use this tool when the user wants to create a new agent, build a custom agent,
+            or develop their own agent for VOLTTRON.
+            """
+            return self._start_agent_creator_impl()
+        
     def _get_volttron_system_prompt(self):
         """Get the system prompt for VOLTTRON AI assistant."""
         return (
