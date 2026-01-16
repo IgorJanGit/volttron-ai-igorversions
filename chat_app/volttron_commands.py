@@ -3375,13 +3375,14 @@ def attempt_standard_install(repo_url, repo_name, install_info):
            f"pip install .\n```"
 
 def find_pip_command():
-    """Find pip command from ACTIVE virtual environment (proper way!)."""
+    """Find pip command - prefers VOLTTRON venv, falls back to system pip."""
     
     pip_path, error = get_pip_command_from_venv()
     if pip_path:
         return pip_path
     
-    print(f"⚠️ pip detection issue: {error}")
+    # No active venv for chat app is fine - VOLTTRON has its own venv
+    # Just use system pip for any dependencies the chat app itself needs
     
     if 'VIRTUAL_ENV' in os.environ:
         venv_pip = os.path.join(os.environ['VIRTUAL_ENV'], 'bin', 'pip')
@@ -3391,7 +3392,7 @@ def find_pip_command():
     
     pip_cmd = shutil.which("pip")
     if pip_cmd:
-        print(f"⚠️ Using system pip from PATH: {pip_cmd} (may cause issues)")
+        print(f"✅ Using system pip: {pip_cmd}")
         return pip_cmd
     
     pip3_cmd = shutil.which("pip3")
