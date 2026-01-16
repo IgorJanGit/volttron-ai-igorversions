@@ -43,32 +43,32 @@ else:
     agent = None
 
 if agent:
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def start_volttron_tool() -> str:
         """Start the VOLTTRON platform."""
         return start_volttron()
 
-    @agent.tool_plain  
+    @agent.tool_plain  # type: ignore[union-attr]
     def stop_volttron_tool() -> str:
         """Stop the VOLTTRON platform."""
         return stop_volttron()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def check_volttron_status_tool() -> str:
         """Check if VOLTTRON platform is running."""
         return check_volttron_status()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def get_vctl_status_tool() -> str:
         """Get current status of all installed agents."""
         return vctl_status()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def vctl_status_detailed_tool() -> str:
         """Get detailed status information about VOLTTRON agents."""
         return vctl_status_detailed()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def list_agents_tool() -> str:
         """List all installed VOLTTRON agents."""
         import subprocess
@@ -104,7 +104,7 @@ if agent:
         except Exception as e:
             return f"Failed to list agents: {str(e)}"
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def start_agent_tool(agent_uuid: str) -> str:
         """Start a VOLTTRON agent by UUID.
         
@@ -113,7 +113,7 @@ if agent:
         """
         return vctl_start_agent(agent_uuid)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def stop_agent_tool(agent_uuid: str) -> str:
         """Stop a VOLTTRON agent by UUID.
         
@@ -122,32 +122,32 @@ if agent:
         """
         return vctl_stop_agent(agent_uuid)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def vctl_health_tool() -> str:
         """Check VOLTTRON platform health."""
         return vctl_health()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_platform_driver_tool() -> str:
         """Install the VOLTTRON platform driver agent."""
         return vctl_install_platform_driver()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def show_recent_logs_tool() -> str:
         """Show recent VOLTTRON logs."""
         return show_recent_logs()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def check_volttron_installation_tool() -> str:
         """Check if VOLTTRON is properly installed."""
         return check_volttron_installation()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def kill_existing_processes_tool() -> str:
         """Kill any existing VOLTTRON processes."""
         return kill_existing_volttron_processes()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def uninstall_agent_tool(agent_uuid: str) -> str:
         """Uninstall a VOLTTRON agent by UUID.
         
@@ -156,12 +156,12 @@ if agent:
         """
         return vctl_uninstall_agent(agent_uuid)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_listener_agent_tool() -> str:
         """Install a VOLTTRON listener agent."""
         return vctl_install_listener_agent()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_agent_tool(agent_name: str) -> str:
         """Install a VOLTTRON agent by name.
         
@@ -170,12 +170,12 @@ if agent:
         """
         return vctl_install_agent(agent_name)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_volttron_tool() -> str:
         """Install VOLTTRON using pip and set up the environment."""
         return install_volttron_with_pip()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def pip_uninstall_tool(package_name: str) -> str:
         """Uninstall a Python package using pip.
         
@@ -184,7 +184,7 @@ if agent:
         """
         return pip_uninstall_package(package_name, force=True)
     
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def pip_install_tool(package_name: str, upgrade: bool = False) -> str:
         """Install a Python package using pip.
         
@@ -194,12 +194,12 @@ if agent:
         """
         return pip_install_package(package_name, upgrade)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def pip_list_tool() -> str:
         """List all installed Python packages."""
         return pip_list_packages()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def smart_install_tool(package_name: str, user_message: str = "") -> str:
         """Intelligently install a package using pip or vctl based on package type.
         
@@ -217,12 +217,12 @@ if agent:
         """
         return smart_install_package(package_name, user_message)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_fake_driver_library_tool() -> str:
         """Install the volttron-lib-fake-driver package for testing and development."""
         return install_fake_driver_library()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def show_fake_driver_logs_tool(num_lines: int = 50) -> str:
         """Show recent fake driver data from VOLTTRON logs.
         
@@ -231,7 +231,7 @@ if agent:
         """
         return show_fake_driver_logs(num_lines)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def check_fake_driver_status_tool() -> str:
         """Check if the fake driver is actively publishing data by examining recent logs.
         
@@ -240,12 +240,12 @@ if agent:
         """
         return check_fake_driver_status()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def watch_fake_driver_logs_tool() -> str:
         """Get instructions for watching fake driver logs in real-time using tail -f."""
         return watch_fake_driver_logs()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def setup_fake_driver_complete_tool() -> str:
         """Complete automated setup of fake driver - installs library, platform driver, configures, and starts everything.
         
@@ -254,7 +254,7 @@ if agent:
         """
         return setup_fake_driver_complete()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def force_remove_agent_tool(agent_tag_or_uuid: str) -> str:
         """Force remove an agent by tag or UUID using aggressive removal methods.
         
@@ -267,12 +267,12 @@ if agent:
         """
         return vctl_force_remove_agent(agent_tag_or_uuid)
         
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def start_all_agents_tool() -> str:
         """Start all available VOLTTRON agents that are not currently running."""
         return vctl_start_all_agents()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def search_github_for_agent_tool(agent_name: str) -> str:
         """Search eclipse-volttron GitHub organization for agent repositories when local agent not found.
         
@@ -281,7 +281,7 @@ if agent:
         """
         return search_github_for_agent(agent_name)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_agent_from_github_tool(repo_url: str) -> str:
         """Install a VOLTTRON agent from a GitHub repository URL.
         
@@ -290,7 +290,7 @@ if agent:
         """
         return install_agent_from_github(repo_url)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def install_from_github_smart_tool(repo_url: str) -> str:
         """Intelligently analyze and install from any GitHub repository.
         
@@ -304,7 +304,7 @@ if agent:
         """
         return install_from_github_smart(repo_url)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def list_all_installations_tool() -> str:
         """List everything installed: agents, pip packages, Ansible roles, and more.
         
@@ -318,7 +318,7 @@ if agent:
         """
         return list_all_installations()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def list_repository_packages_tool() -> str:
         """List all VOLTTRON packages in the current repository's virtual environment.
         
@@ -328,7 +328,7 @@ if agent:
         """
         return list_repository_packages()
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def run_vctl_help_tool(subcommand: Optional[str] = None) -> str:
         """Run vctl --help to learn about available commands.
         
@@ -340,7 +340,7 @@ if agent:
         """
         return run_vctl_help(subcommand)
 
-    @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
     def intelligent_vctl_discovery_tool(user_intent: str, context: str = "") -> str:
         """Intelligently discover and execute vctl commands by learning from --help.
         
@@ -1159,17 +1159,17 @@ class AIService:
                 elif self.last_action == "stop_volttron":
                     return True, "It sounds like you want to start VOLTTRON instead. Should I start the VOLTTRON platform for you?"
                 elif self.last_action == "install_agent":
-                    agent_type = self.last_action_details.get("agent_type", "the agent")
-                    agent_id = self.last_action_details.get("agent_id", "")
+                    agent_type = self.last_action_details.get("agent_type", "the agent") if self.last_action_details else "the agent"
+                    agent_id = self.last_action_details.get("agent_id", "") if self.last_action_details else ""
                     if agent_id:
                         return True, f"It sounds like you want to uninstall the {agent_type} agent (ID: {agent_id}) that was just installed. Should I uninstall it for you?"
                     else:
                         return True, f"It sounds like you want to uninstall the {agent_type} agent that was just installed. Should I uninstall it for you?"
                 elif self.last_action == "uninstall_agent":
-                    agent_type = self.last_action_details.get("agent_type", "agent") 
+                    agent_type = self.last_action_details.get("agent_type", "agent") if self.last_action_details else "agent" 
                     return True, f"It sounds like you want to reinstall the {agent_type} agent. Should I install it again for you?"
                 elif self.last_action == "create_config":
-                    config_type = self.last_action_details.get("config_type", "configuration")
+                    config_type = self.last_action_details.get("config_type", "configuration") if self.last_action_details else "configuration"
                     return True, f"It sounds like you want to remove the {config_type} files that were just created. Should I delete them for you?"
                 elif self.last_action:
                     return True, f"It sounds like you want to reverse the last action ({self.last_action}). What would you like me to do instead?"
@@ -2206,38 +2206,38 @@ Ready to build the package? (Proceed automatically...)
 
     def _register_volttron_tools_on_agent(self, agent):
         """Register VOLTTRON control tools on a specific agent."""
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def start_volttron_tool() -> str:
             """Start the VOLTTRON platform."""
             return start_volttron()
         
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def stop_volttron_tool() -> str:
             """Stop the VOLTTRON platform."""
             return stop_volttron()
         
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def check_volttron_status_tool() -> str:
             """Check VOLTTRON platform status and show recent logs."""
             return check_volttron_status()
             
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def simple_volttron_status_check_tool() -> str:
             """Simple check if VOLTTRON is running with minimal output."""
             return simple_volttron_status_check()
         
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def list_agents_tool() -> str:
             """List all installed VOLTTRON agents."""
             return vctl_list_agents()
         
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def install_agent_tool(agent_name: str) -> str:
             """Install a VOLTTRON agent by name."""
             return vctl_install_agent(agent_name)
     
         
-        @agent.tool_plain
+    @agent.tool_plain  # type: ignore[union-attr]
         def start_agent_creator_tool() -> str:
             """Start the agent creation wizard to build a custom VOLTTRON agent.
             
@@ -2384,14 +2384,14 @@ Ready to build the package? (Proceed automatically...)
                 if message_lower in ['yes', 'y', 'yeah', 'yep', 'sure', 'ok', 'okay']:
                     self.awaiting_reversal_confirmation = False
                     if self.last_action == "install_agent":
-                        agent_type = self.last_action_details.get("agent_type", "agent")
+                        agent_type = self.last_action_details.get("agent_type", "agent") if self.last_action_details else "agent"
                         return self.call_function_tool("vctl_uninstall_agent", {"agent_uuid_or_tag": agent_type})
                     elif self.last_action == "start_volttron":
                         return self.call_function_tool("stop_volttron", {})
                     elif self.last_action == "stop_volttron":
                         return self.call_function_tool("start_volttron", {})
                     elif self.last_action == "uninstall_agent":
-                        agent_type = self.last_action_details.get("agent_type", "agent")
+                        agent_type = self.last_action_details.get("agent_type", "agent") if self.last_action_details else "agent"
                         return f"To reinstall the {agent_type}, please tell me which agent you'd like to install. You can say 'install listener' or 'what agents can I install' to see options."
                     else:
                         return "I'm not sure how to reverse that action. What would you like me to do?"
