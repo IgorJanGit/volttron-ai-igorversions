@@ -2499,7 +2499,7 @@ Ready to build the package? (Proceed automatically...)
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
                         messages=messages,  # type: ignore[arg-type]
-                        tools=tools,
+                        tools=tools,  # type: ignore[arg-type]
                         tool_choice="auto",
                         max_tokens=1000,
                         temperature=0.7
@@ -2509,7 +2509,7 @@ Ready to build the package? (Proceed automatically...)
                     response = client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,  # type: ignore[arg-type]
-                        tools=tools,
+                        tools=tools,  # type: ignore[arg-type]
                         tool_choice="auto",
                         max_tokens=1000,
                         temperature=0.7
@@ -2550,7 +2550,7 @@ Ready to build the package? (Proceed automatically...)
                         final_response = self.custom_client.chat.completions.create(
                             model=self.custom_model,
                             messages=follow_up_messages,
-                            tools=tools,
+                            tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
                             temperature=0.7
@@ -2560,7 +2560,7 @@ Ready to build the package? (Proceed automatically...)
                         final_response = client.chat.completions.create(
                             model=self.model_name,
                             messages=follow_up_messages,
-                            tools=tools,
+                            tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
                             temperature=0.7
@@ -2622,7 +2622,7 @@ Ready to build the package? (Proceed automatically...)
                         final_response = self.custom_client.chat.completions.create(
                             model=self.custom_model,
                             messages=follow_up_messages,
-                            tools=tools,
+                            tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
                             temperature=0.7
@@ -2632,7 +2632,7 @@ Ready to build the package? (Proceed automatically...)
                         final_response = client.chat.completions.create(
                             model=self.model_name,
                             messages=follow_up_messages,
-                            tools=tools,
+                            tools=tools,  # type: ignore[arg-type]
                             tool_choice="auto",
                             max_tokens=1000,
                             temperature=0.7
