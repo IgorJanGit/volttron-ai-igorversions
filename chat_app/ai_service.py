@@ -923,12 +923,92 @@ class AIService:
                         "required": ["user_intent"]
                     }
                 }
+            },
+            "start_agent_creator_tool": {
+                "function": lambda: self._start_agent_creator_impl(),
+                "schema": {
+                    "name": "start_agent_creator_tool",
+                    "description": "Start the agent creation wizard. Use this when user wants to create a new VOLTTRON agent.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "agent_creator_next_step_tool": {
+                "function": lambda user_input: self._agent_creator_next_step_impl(user_input),
+                "schema": {
+                    "name": "agent_creator_next_step_tool",
+                    "description": "Advance to the next step in the agent creation wizard.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "user_input": {
+                                "type": "string",
+                                "description": "User's response to current wizard step"
+                            }
+                        },
+                        "required": ["user_input"]
+                    }
+                }
+            },
+            "agent_scaffold_tool": {
+                "function": lambda: self._agent_scaffold_impl(),
+                "schema": {
+                    "name": "agent_scaffold_tool",
+                    "description": "Generate agent project files based on collected requirements.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "agent_package_tool": {
+                "function": lambda: self._agent_package_impl(),
+                "schema": {
+                    "name": "agent_package_tool",
+                    "description": "Build the agent package (wheel or editable install).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            "agent_install_tool": {
+                "function": lambda start_agent=True: self._agent_install_impl(start_agent),
+                "schema": {
+                    "name": "agent_install_tool",
+                    "description": "Install the built agent package to VOLTTRON.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "start_agent": {
+                                "type": "boolean",
+                                "description": "Whether to start the agent after installation",
+                                "default": True
+                            }
+                        },
+                        "required": []
+                    }
+                }
             }
         }
-        
     def get_function_schemas(self) -> List[Dict]:
         """Get OpenAI function schemas for all registered tools."""
         return [tool["schema"] for tool in self.function_tools.values()]
+    
+    def get_tools_schemas(self) -> List[Dict]:
+        """Get OpenAI tools format (new format) for all registered tools."""
+        return [
+            {
+                "type": "function",
+                "function": tool["schema"]
+            }
+            for tool in self.function_tools.values()
+        ]
     
     def call_function_tool(self, function_name: str, arguments: Dict[str, Any]) -> str:
         """Call a registered function tool with the provided arguments."""
@@ -1397,15 +1477,272 @@ Please specify which agent to uninstall. Examples:
     def _create_agent_with_tools(self):
         """Create an agent for custom client usage with tools."""
         if Agent is not None:
-            agent = Agent(
-                self.model_name,
-                system_prompt=self._get_volttron_system_prompt()
-            )
+            # If using custom OpenAI-compatible API (like PNNL), configure it
+            if hasattr(self, 'custom_client') and self.custom_client:
+                try:
+                    from pydantic_ai.models.openai import OpenAIModel
+                    from pydantic_ai.providers.openai import OpenAIProvider
+                    # Use custom model name (without provider prefix)
+                    model_name = self.custom_model if hasattr(self, 'custom_model') else self.model_name
+                    # Create custom provider with PNNL API endpoint
+                    provider = OpenAIProvider(
+                        base_url=os.getenv("AI_WEBAPP_URL"),
+                        api_key=os.getenv("AI_API_KEY")
+                    )
+                    # Create OpenAI model with custom provider
+                    model = OpenAIModel(
+                        model_name,
+                        provider=provider
+                    )
+                    agent = Agent(
+                        model,
+                        system_prompt=self._get_volttron_system_prompt()
+                    )
+                    print(f"✓ Using Pydantic AI with custom API: {os.getenv('AI_WEBAPP_URL')}")
+                except ImportError as e:
+                    # Fallback if OpenAIModel not available
+                    print(f"Warning: Could not import from pydantic_ai ({e}), using default")
+                    agent = Agent(
+                        self.model_name,
+                        system_prompt=self._get_volttron_system_prompt()
+                    )
+            else:
+                agent = Agent(
+                    self.model_name,
+                    system_prompt=self._get_volttron_system_prompt()
+                )
+            
             self._register_volttron_tools_on_agent(agent)
             return agent
         else:
             return None
     
+
+    # Agent Creator Implementation Methods (for fallback function tools)
+    def _start_agent_creator_impl(self):
+        """Implementation for starting the agent creator wizard."""
+        # Initialize wizard state in conversation history
+        conversation_history = self._load_conversation_history()
+        
+        conversation_history["agent_creator_active"] = True
+        conversation_history["agent_creator_step"] = 1
+        conversation_history["agent_requirements"] = {}
+        
+        self._save_conversation_history(conversation_history)
+        
+        welcome = """
+🎉 **Welcome to the VOLTTRON Agent Creator!**
+
+This wizard will help you build a production-ready VOLTTRON agent with:
+
+✨ **Automated Code Generation**
+   - Complete agent structure with all required files
+   - Extensively commented code explaining VOLTTRON patterns
+   - Best practices built-in (error handling, logging, configuration)
+
+🎓 **Educational Guidance**
+   - Each step explains VOLTTRON concepts
+   - Links to official documentation
+   - Examples for common use cases
+
+🤖 **AI-Powered Analysis** (NEW!)
+   - Paste any API documentation URL
+   - Get implementation recommendations automatically
+   - TODO comments guide you through integration
+
+📚 **What You'll Get:**
+   - `agent.py` - Your agent code with detailed comments
+   - `pyproject.toml` - Package configuration
+   - `README.md` - Installation and usage guide
+   - `config/default_config.json` - Configuration template
+   - `tests/test_agent.py` - Test skeleton
+
+**🚀 Process:**
+10 quick steps → Generate code → Build package → Install to VOLTTRON
+
+**📖 Reference Documentation:**
+https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
+
+Let's create your agent!
+
+"""
+        
+        # Get first step prompt
+        req = AgentRequirements()
+        _, _, first_prompt = collect_requirements({}, 1, "")
+        
+        return welcome + first_prompt
+    
+    def _agent_creator_next_step_impl(self, user_input):
+        """Implementation for advancing to next step in agent creator wizard."""
+        conversation_history = self._load_conversation_history()
+        
+        if not conversation_history.get("agent_creator_active"):
+            return "❌ Agent creator not active. Start with 'create a new agent' first."
+        
+        current_step = conversation_history.get("agent_creator_step", 1)
+        req_data = conversation_history.get("agent_requirements", {})
+        
+        # Collect requirements
+        req, next_step, next_prompt = collect_requirements(
+            {"agent_requirements": req_data},
+            current_step,
+            user_input
+        )
+        
+        # If step 3.6 (URL analysis), analyze the URL
+        if next_step == 3.6 and req.url:
+            try:
+                recommendations = analyze_url_for_agent(req.url, req.description)
+                req.ai_recommendations = recommendations
+                next_prompt = f"✅ **URL Analysis Complete!**\n\n{recommendations[:500]}...\n\n(Full recommendations will be included in generated code)\n\nPress Enter to continue to template selection."
+                # Auto-advance to step 4 after showing recommendations
+                next_step = 4
+            except Exception as e:
+                next_prompt = f"⚠️ Could not analyze URL: {str(e)}\n\nContinuing without URL analysis. Press Enter to continue."
+                next_step = 4
+        
+        # Update conversation history
+        conversation_history["agent_creator_step"] = next_step
+        conversation_history["agent_requirements"] = req.to_dict()
+        
+        if next_step > 9:
+            # All steps complete, trigger scaffolding
+            conversation_history["agent_creator_active"] = False
+            self._save_conversation_history(conversation_history)
+            
+            return next_prompt + "\n\n" + self._agent_scaffold_impl()
+        else:
+            self._save_conversation_history(conversation_history)
+            return next_prompt
+    
+    def _agent_scaffold_impl(self):
+        """Implementation for scaffolding the agent project files."""
+        conversation_history = self._load_conversation_history()
+        req_data = conversation_history.get("agent_requirements", {})
+        
+        if not req_data:
+            return "❌ No agent requirements found. Start the agent creator first."
+        
+        req = AgentRequirements.from_dict(req_data)
+        
+        # Validate name
+        valid, msg = validate_agent_name(req.name)
+        if not valid:
+            return msg
+        
+        # Validate VIP identity
+        valid, msg = validate_vip_identity(req.vip_identity)
+        if not valid:
+            return msg
+        
+        try:
+            # Generate project
+            project_dir = write_agent_project(req)
+            
+            # Store project directory in conversation history
+            conversation_history["agent_project_dir"] = project_dir
+            conversation_history["agent_package_format"] = req.package_format
+            self._save_conversation_history(conversation_history)
+            
+            return f"""✅ **Agent project created successfully!**
+
+**Location:** `{project_dir}`
+
+**Generated Files:**
+- `{req.name.replace('-', '_')}/agent.py` - Main agent code with detailed comments
+- `pyproject.toml` - Project metadata and dependencies
+- `README.md` - Usage instructions and documentation
+- `config/default_config.json` - Default configuration
+- `tests/test_agent.py` - Basic unit tests
+
+**Next Steps:**
+
+1. **Review the code** - Check `{project_dir}/{req.name.replace('-', '_')}/agent.py`
+2. **Build the package** - I'll do this next automatically
+3. **Install and test** - We'll install it into VOLTTRON
+
+Ready to build the package? (Proceed automatically...)
+"""
+        except Exception as e:
+            return f"❌ Error creating agent project: {str(e)}"
+    
+    def _agent_package_impl(self):
+        """Implementation for building the agent package."""
+        conversation_history = self._load_conversation_history()
+        project_dir = conversation_history.get("agent_project_dir")
+        package_format = conversation_history.get("agent_package_format", "wheel")
+        
+        if not project_dir:
+            return "❌ No agent project found. Create an agent first."
+        
+        success, message = build_package(project_dir, package_format)
+        
+        if success:
+            # Store build status
+            conversation_history["agent_built"] = True
+            self._save_conversation_history(conversation_history)
+            
+            return message + "\n\n**Ready to install?** Say 'install my agent' or I can do it automatically now."
+        else:
+            return message
+    
+    def _agent_install_impl(self, start_agent=True):
+        """Implementation for installing the agent into VOLTTRON."""
+        conversation_history = self._load_conversation_history()
+        project_dir = conversation_history.get("agent_project_dir")
+        req_data = conversation_history.get("agent_requirements", {})
+        
+        if not project_dir:
+            return "❌ No agent project found. Create an agent first."
+        
+        if not req_data:
+            return "❌ No agent requirements found."
+        
+        req = AgentRequirements.from_dict(req_data)
+        
+        # Check if agent was built
+        if not conversation_history.get("agent_built"):
+            # Build first
+            success, build_msg = build_package(project_dir, req.package_format)
+            if not success:
+                return f"❌ Build failed before installation:\n{build_msg}"
+        
+        # Install using vctl
+        success, message = install_agent_package(
+            project_dir,
+            req.vip_identity,
+            start=start_agent,
+            method="vctl"
+        )
+        
+        if success:
+            conversation_history["agent_installed"] = True
+            self._save_conversation_history(conversation_history)
+            
+            return message + f"""
+
+🎉 **Congratulations!** Your agent is now running!
+
+**What's next?**
+
+• **Check status:** Say 'show agent status' or 'vctl status'
+• **View logs:** Say 'show logs' to see your agent in action
+• **Configure:** Edit `{project_dir}/config/default_config.json` and update with `vctl config store`
+• **Modify code:** The agent is in `{project_dir}`, edit and reinstall
+• **Create another:** Say 'create a new agent' to make another one!
+
+**Agent Details:**
+- Name: {req.name}
+- VIP Identity: {req.vip_identity}
+- Template: {req.template_type}
+
+**Documentation:** https://volttron.readthedocs.io/
+"""
+        else:
+            return message
+
+
     def _register_volttron_tools(self):
         """Register VOLTTRON control tools with the agent using Pydantic AI's tool system."""
         @self.agent.tool_plain
@@ -2082,7 +2419,7 @@ Ready to build the package? (Proceed automatically...)
             print(f"DEBUG generate_response: Checking direct_result for '{message}'")
             direct_result = self._handle_direct_command(message)
             if direct_result:
-                return direct_result
+                return f"ℹ️ **Using fallback command handler** (AI connection unavailable)\n\n{direct_result}"
             
             if self.agent:
                 return await self._generate_response_with_pydantic_ai(message)
@@ -2144,11 +2481,17 @@ Ready to build the package? (Proceed automatically...)
             
             messages.append({"role": "user", "content": message})
             
+            # Get tools in the new OpenAI format
+            tools = self.get_tools_schemas()
+            
             if is_claude_model:
+                # Claude models via PNNL API support tools in OpenAI format
                 if self.custom_client:
                     response = self.custom_client.chat.completions.create(
                         model=self.custom_model,
                         messages=messages,
+                        tools=tools,
+                        tool_choice="auto",
                         max_tokens=1000,
                         temperature=0.7
                     )
@@ -2157,15 +2500,69 @@ Ready to build the package? (Proceed automatically...)
                     response = client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,
+                        tools=tools,
+                        tool_choice="auto",
                         max_tokens=1000,
                         temperature=0.7
                     )
                 
-                ai_response = response.choices[0].message.content
+                message_response = response.choices[0].message
                 
-                ai_response = self._process_claude_response_for_commands(ai_response, message)
+                # Check if Claude called a tool
+                if message_response.tool_calls:
+                    tool_call = message_response.tool_calls[0]
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments)
+                    
+                    function_result = self.call_function_tool(function_name, function_args)
+                    
+                    # Get final response with function result
+                    follow_up_messages = messages + [
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [{
+                                "id": tool_call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": function_name,
+                                    "arguments": tool_call.function.arguments
+                                }
+                            }]
+                        },
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": function_result
+                        }
+                    ]
+                    
+                    if self.custom_client:
+                        final_response = self.custom_client.chat.completions.create(
+                            model=self.custom_model,
+                            messages=follow_up_messages,
+                            tools=tools,
+                            tool_choice="auto",
+                            max_tokens=1000,
+                            temperature=0.7
+                        )
+                    else:
+                        client = openai.OpenAI()
+                        final_response = client.chat.completions.create(
+                            model=self.model_name,
+                            messages=follow_up_messages,
+                            tools=tools,
+                            tool_choice="auto",
+                            max_tokens=1000,
+                            temperature=0.7
+                        )
+                    
+                    ai_response = final_response.choices[0].message.content
+                else:
+                    ai_response = message_response.content
                 
             else:
+                # Non-Claude models: use old functions format for backward compatibility
                 function_schemas = self.get_function_schemas()
                 
                 if self.custom_client:
@@ -2216,6 +2613,8 @@ Ready to build the package? (Proceed automatically...)
                         final_response = self.custom_client.chat.completions.create(
                             model=self.custom_model,
                             messages=follow_up_messages,
+                            tools=tools,
+                            tool_choice="auto",
                             max_tokens=1000,
                             temperature=0.7
                         )
@@ -2224,6 +2623,8 @@ Ready to build the package? (Proceed automatically...)
                         final_response = client.chat.completions.create(
                             model=self.model_name,
                             messages=follow_up_messages,
+                            tools=tools,
+                            tool_choice="auto",
                             max_tokens=1000,
                             temperature=0.7
                         )
@@ -2240,7 +2641,10 @@ Ready to build the package? (Proceed automatically...)
             
         except Exception as e:
             print(f"Error in AI response generation: {e}")
-            return self._handle_direct_command(message) or f"❌ I encountered an error: {str(e)}. Please try again."
+            fallback_result = self._handle_direct_command(message)
+            if fallback_result:
+                return f"ℹ️ **Using fallback command handler** (AI connection failed)\n\n{fallback_result}"
+            return f"❌ I encountered an error: {str(e)}. Please try again."
     
     def _process_claude_response_for_commands(self, ai_response: str, user_message: str) -> str:
         """Process Claude response and try to execute any VOLTTRON commands mentioned."""
@@ -2341,6 +2745,8 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         if message_lower.startswith(('which ', 'psql ', 'cat ', 'ls ', 'grep ', 'find ')):
             return None
         
+
+
         workflow_indicators = ['execute all', 'follow all', 'complete setup', 'full setup', 
                               'setup and configure', 'install and setup', 'install and configure']
         if any(indicator in message_lower for indicator in workflow_indicators):
