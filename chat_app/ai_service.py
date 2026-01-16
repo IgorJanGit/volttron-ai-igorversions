@@ -1294,7 +1294,7 @@ class AIService:
                 
         return None
     
-    def _track_action(self, action: str, details: dict = None):
+    def _track_action(self, action: str, details: Optional[dict] = None):
         """Track the last action performed for context reversal."""
         self.last_action = action
         self.last_action_details = details or {}
