@@ -2422,6 +2422,11 @@ Ready to build the package? (Proceed automatically...)
             if is_reversal:
                 return reversal_response
             
+            # WIZARD MODE AUTO-HANDLING: Force immediate tool call when wizard is active
+            if self.agent_creator_state.get("agent_creator_active"):
+                print(f"🧙 WIZARD AUTO-MODE: Calling next_step with input: '{message}'")
+                return self._agent_creator_next_step_impl(message)
+            
             if hasattr(self, 'awaiting_reversal_confirmation') and self.awaiting_reversal_confirmation:
                 message_lower = message.lower().strip()
                 if message_lower in ['yes', 'y', 'yeah', 'yep', 'sure', 'ok', 'okay']:
