@@ -392,7 +392,6 @@ class AIService:
         if self.agent:
             try:
                 self.agent.model = model_name
-                self.agent.system_prompt = self.system_prompt
             except Exception as e:
                 print(f"Warning: Could not configure Pydantic AI agent: {e}")
                 self.agent = None
