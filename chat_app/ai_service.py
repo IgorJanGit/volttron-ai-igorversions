@@ -2647,7 +2647,7 @@ Ready to build the package? (Proceed automatically...)
             self.conversation_history.append({"role": "assistant", "content": ai_response})
             self._save_conversation_history()
             
-            return ai_response
+            return ai_response or ""
             
         except Exception as e:
             print(f"Error in AI response generation: {e}")
