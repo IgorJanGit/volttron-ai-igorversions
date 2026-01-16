@@ -2339,8 +2339,8 @@ Ready to build the package? (Proceed automatically...)
                 self.agent = self._create_agent_with_tools()
             elif self.model_name.startswith("ollama:"):
                 if Agent is not None:
-                    from pydantic_ai_slim.models.openai import OpenAIChatModel
-                    from pydantic_ai_slim.providers.ollama import OllamaProvider
+                    from pydantic_ai.models.openai import OpenAIChatModel
+                    from pydantic_ai.providers.ollama import OllamaProvider
                     model_id = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
                     ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
                     print(f"Connecting to Ollama at: {ollama_base_url}")
