@@ -1614,8 +1614,25 @@ Let's create your agent!
             return next_prompt + "\n\n" + self._agent_scaffold_impl()
         else:
             self._save_conversation_history()
-            return next_prompt
+            return self._add_wizard_cta(next_prompt, next_step)
     
+    def _add_wizard_cta(self, prompt: str, step: int) -> str:
+        """Add clear call-to-action footer to wizard prompts."""
+        cta_messages = {
+            1: "\n\n💡 **Ready?** Just type your agent name (e.g., 'weather-monitor') and press enter.",
+            2: "\n\n💡 **Suggested:** Based on your agent name, I recommend this VIP identity.\n   Type **'yes'** to use it, or provide your own.",
+            3: "\n\n💡 **Ready?** Describe what your agent does in 1-2 sentences.",
+            4: "\n\n💡 **Options:** Type the template number (1-4) or name (minimal/listener/driver/historian).",
+            5: "\n\n💡 **Add topics:** Enter topics separated by commas, or type **'none'** to skip.",
+            6: "\n\n💡 **Add topics:** Enter topics separated by commas, or type **'none'** to skip.",
+            7: "\n\n💡 **Choose schedule:** Type 'none', an interval (e.g., '60s', '5m'), or cron expression.",
+            8: "\n\n💡 **Add packages:** Enter package names separated by commas, or type **'none'** to skip.",
+            9: "\n\n💡 **Choose format:** Type **'wheel'** (recommended) or **'editable'**."
+        }
+        
+        cta = cta_messages.get(step, "\n\n💡 **Ready?** Type **'yes'** or **'continue'** to proceed.")
+        return prompt + cta
+
     def _agent_scaffold_impl(self):
         """Implementation for scaffolding the agent project files."""
         conversation_history = self._load_conversation_history()
