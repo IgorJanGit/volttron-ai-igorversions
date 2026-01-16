@@ -1523,9 +1523,9 @@ Please specify which agent to uninstall. Examples:
         # Initialize wizard state in conversation history
         conversation_history = self._load_conversation_history()
         
-        self.conversation_history["agent_creator_active"] = True
-        self.conversation_history["agent_creator_step"] = 1
-        self.conversation_history["agent_requirements"] = {}
+        self.agent_creator_state["agent_creator_active"] = True
+        self.agent_creator_state["agent_creator_step"] = 1
+        self.agent_creator_state["agent_requirements"] = {}
         
         self._save_conversation_history()
         
@@ -1576,11 +1576,11 @@ Let's create your agent!
         """Implementation for advancing to next step in agent creator wizard."""
         conversation_history = self._load_conversation_history()
         
-        if not self.conversation_history.get("agent_creator_active"):
+        if not self.agent_creator_state.get("agent_creator_active"):
             return "❌ Agent creator not active. Start with 'create a new agent' first."
         
-        current_step = self.conversation_history.get("agent_creator_step", 1)
-        req_data = self.conversation_history.get("agent_requirements", {})
+        current_step = self.agent_creator_state.get("agent_creator_step", 1)
+        req_data = self.agent_creator_state.get("agent_requirements", {})
         
         # Collect requirements
         req, next_step, next_prompt = collect_requirements(
@@ -1602,12 +1602,12 @@ Let's create your agent!
                 next_step = 4
         
         # Update conversation history
-        self.conversation_history["agent_creator_step"] = next_step
-        self.conversation_history["agent_requirements"] = req.to_dict()
+        self.agent_creator_state["agent_creator_step"] = next_step
+        self.agent_creator_state["agent_requirements"] = req.to_dict()
         
         if next_step > 9:
             # All steps complete, trigger scaffolding
-            self.conversation_history["agent_creator_active"] = False
+            self.agent_creator_state["agent_creator_active"] = False
             self._save_conversation_history()
             
             return next_prompt + "\n\n" + self._agent_scaffold_impl()
@@ -1618,7 +1618,7 @@ Let's create your agent!
     def _agent_scaffold_impl(self):
         """Implementation for scaffolding the agent project files."""
         conversation_history = self._load_conversation_history()
-        req_data = self.conversation_history.get("agent_requirements", {})
+        req_data = self.agent_creator_state.get("agent_requirements", {})
         
         if not req_data:
             return "❌ No agent requirements found. Start the agent creator first."
@@ -1640,8 +1640,8 @@ Let's create your agent!
             project_dir = write_agent_project(req)
             
             # Store project directory in conversation history
-            self.conversation_history["agent_project_dir"] = project_dir
-            self.conversation_history["agent_package_format"] = req.package_format
+            self.agent_creator_state["agent_project_dir"] = project_dir
+            self.agent_creator_state["agent_package_format"] = req.package_format
             self._save_conversation_history()
             
             return f"""✅ **Agent project created successfully!**
@@ -1669,8 +1669,8 @@ Ready to build the package? (Proceed automatically...)
     def _agent_package_impl(self):
         """Implementation for building the agent package."""
         conversation_history = self._load_conversation_history()
-        project_dir = self.conversation_history.get("agent_project_dir")
-        package_format = self.conversation_history.get("agent_package_format", "wheel")
+        project_dir = self.agent_creator_state.get("agent_project_dir")
+        package_format = self.agent_creator_state.get("agent_package_format", "wheel")
         
         if not project_dir:
             return "❌ No agent project found. Create an agent first."
@@ -1679,7 +1679,7 @@ Ready to build the package? (Proceed automatically...)
         
         if success:
             # Store build status
-            self.conversation_history["agent_built"] = True
+            self.agent_creator_state["agent_built"] = True
             self._save_conversation_history()
             
             return message + "\n\n**Ready to install?** Say 'install my agent' or I can do it automatically now."
@@ -1689,8 +1689,8 @@ Ready to build the package? (Proceed automatically...)
     def _agent_install_impl(self, start_agent=True):
         """Implementation for installing the agent into VOLTTRON."""
         conversation_history = self._load_conversation_history()
-        project_dir = self.conversation_history.get("agent_project_dir")
-        req_data = self.conversation_history.get("agent_requirements", {})
+        project_dir = self.agent_creator_state.get("agent_project_dir")
+        req_data = self.agent_creator_state.get("agent_requirements", {})
         
         if not project_dir:
             return "❌ No agent project found. Create an agent first."
@@ -1701,7 +1701,7 @@ Ready to build the package? (Proceed automatically...)
         req = AgentRequirements.from_dict(req_data)
         
         # Check if agent was built
-        if not self.conversation_history.get("agent_built"):
+        if not self.agent_creator_state.get("agent_built"):
             # Build first
             success, build_msg = build_package(project_dir, req.package_format)
             if not success:
@@ -1716,7 +1716,7 @@ Ready to build the package? (Proceed automatically...)
         )
         
         if success:
-            self.conversation_history["agent_installed"] = True
+            self.agent_creator_state["agent_installed"] = True
             self._save_conversation_history()
             
             return message + f"""
@@ -1949,9 +1949,9 @@ Ready to build the package? (Proceed automatically...)
             # Initialize wizard state in conversation history
             conversation_history = self._load_conversation_history()
             
-            self.conversation_history["agent_creator_active"] = True
-            self.conversation_history["agent_creator_step"] = 1
-            self.conversation_history["agent_requirements"] = {}
+            self.agent_creator_state["agent_creator_active"] = True
+            self.agent_creator_state["agent_creator_step"] = 1
+            self.agent_creator_state["agent_requirements"] = {}
             
             self._save_conversation_history()
             
@@ -2013,11 +2013,11 @@ Let's create your agent!
             """
             conversation_history = self._load_conversation_history()
             
-            if not conversation_history.get("agent_creator_active"):
+            if not self.agent_creator_state.get("agent_creator_active"):
                 return "❌ Agent creator not active. Start with 'create a new agent' first."
             
-            current_step = conversation_history.get("agent_creator_step", 1)
-            req_data = conversation_history.get("agent_requirements", {})
+            current_step = self.agent_creator_state.get("agent_creator_step", 1)
+            req_data = self.agent_creator_state.get("agent_requirements", {})
             
             # Collect requirements
             req, next_step, next_prompt = collect_requirements(
@@ -2039,12 +2039,12 @@ Let's create your agent!
                     next_step = 4
             
             # Update conversation history
-            conversation_history["agent_creator_step"] = next_step
-            conversation_history["agent_requirements"] = req.to_dict()
+            self.agent_creator_state["agent_creator_step"] = next_step
+            self.agent_creator_state["agent_requirements"] = req.to_dict()
             
             if next_step > 9:
                 # All steps complete, trigger scaffolding
-                conversation_history["agent_creator_active"] = False
+                self.agent_creator_state["agent_creator_active"] = False
                 self._save_conversation_history()
                 
                 return next_prompt + "\n\n" + agent_scaffold_tool()
@@ -2067,7 +2067,7 @@ Let's create your agent!
                 Status message and project location
             """
             conversation_history = self._load_conversation_history()
-            req_data = conversation_history.get("agent_requirements", {})
+            req_data = self.agent_creator_state.get("agent_requirements", {})
             
             if not req_data:
                 return "❌ No agent requirements found. Start the agent creator first."
@@ -2089,8 +2089,8 @@ Let's create your agent!
                 project_dir = write_agent_project(req)
                 
                 # Store project directory in conversation history
-                conversation_history["agent_project_dir"] = project_dir
-                conversation_history["agent_package_format"] = req.package_format
+                self.agent_creator_state["agent_project_dir"] = project_dir
+                self.agent_creator_state["agent_package_format"] = req.package_format
                 self._save_conversation_history()
                 
                 return f"""✅ **Agent project created successfully!**
@@ -2126,8 +2126,8 @@ Ready to build the package? (Proceed automatically...)
                 Build status and package location
             """
             conversation_history = self._load_conversation_history()
-            project_dir = conversation_history.get("agent_project_dir")
-            package_format = conversation_history.get("agent_package_format", "wheel")
+            project_dir = self.agent_creator_state.get("agent_project_dir")
+            package_format = self.agent_creator_state.get("agent_package_format", "wheel")
             
             if not project_dir:
                 return "❌ No agent project found. Create an agent first."
@@ -2136,7 +2136,7 @@ Ready to build the package? (Proceed automatically...)
             
             if success:
                 # Store build status
-                conversation_history["agent_built"] = True
+                self.agent_creator_state["agent_built"] = True
                 self._save_conversation_history()
                 
                 return message + "\n\n**Ready to install?** Say 'install my agent' or I can do it automatically now."
@@ -2156,8 +2156,8 @@ Ready to build the package? (Proceed automatically...)
                 Installation status and next steps
             """
             conversation_history = self._load_conversation_history()
-            project_dir = conversation_history.get("agent_project_dir")
-            req_data = conversation_history.get("agent_requirements", {})
+            project_dir = self.agent_creator_state.get("agent_project_dir")
+            req_data = self.agent_creator_state.get("agent_requirements", {})
             
             if not project_dir:
                 return "❌ No agent project found. Create an agent first."
@@ -2168,7 +2168,7 @@ Ready to build the package? (Proceed automatically...)
             req = AgentRequirements.from_dict(req_data)
             
             # Check if agent was built
-            if not conversation_history.get("agent_built"):
+            if not self.agent_creator_state.get("agent_built"):
                 # Build first
                 success, build_msg = build_package(project_dir, req.package_format)
                 if not success:
@@ -2183,7 +2183,7 @@ Ready to build the package? (Proceed automatically...)
             )
             
             if success:
-                conversation_history["agent_installed"] = True
+                self.agent_creator_state["agent_installed"] = True
                 self._save_conversation_history()
                 
                 return message + f"""
