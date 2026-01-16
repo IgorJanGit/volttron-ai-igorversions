@@ -6,13 +6,10 @@ import openai
 import inspect
 
 try:
-    from pydantic_ai_slim import Agent
+    from pydantic_ai import Agent
 except ImportError:
-    try:
-        from pydantic_ai import Agent
-    except ImportError:
-        print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
-        Agent = None
+    print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
+    Agent = None
 
 from .volttron_commands import (
     start_volttron, stop_volttron, check_volttron_status, simple_volttron_status_check, read_volttron_log,
