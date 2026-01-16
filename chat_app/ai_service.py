@@ -2454,10 +2454,10 @@ Ready to build the package? (Proceed automatically...)
             
           
             self.conversation_history.append({"role": "user", "content": message})
-            self.conversation_history.append({"role": "assistant", "content": result.data})
+            self.conversation_history.append({"role": "assistant", "content": result.output})
             self._save_conversation_history()
             
-            return result.data
+            return result.output
             
         except Exception as e:
             print(f"Error in Pydantic AI response generation: {e}")
