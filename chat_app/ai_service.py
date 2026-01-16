@@ -1523,11 +1523,11 @@ Please specify which agent to uninstall. Examples:
         # Initialize wizard state in conversation history
         conversation_history = self._load_conversation_history()
         
-        conversation_history["agent_creator_active"] = True
-        conversation_history["agent_creator_step"] = 1
-        conversation_history["agent_requirements"] = {}
+        self.conversation_history["agent_creator_active"] = True
+        self.conversation_history["agent_creator_step"] = 1
+        self.conversation_history["agent_requirements"] = {}
         
-        self._save_conversation_history(conversation_history)
+        self._save_conversation_history()
         
         welcome = """
 🎉 **Welcome to the VOLTTRON Agent Creator!**
@@ -1576,11 +1576,11 @@ Let's create your agent!
         """Implementation for advancing to next step in agent creator wizard."""
         conversation_history = self._load_conversation_history()
         
-        if not conversation_history.get("agent_creator_active"):
+        if not self.conversation_history.get("agent_creator_active"):
             return "❌ Agent creator not active. Start with 'create a new agent' first."
         
-        current_step = conversation_history.get("agent_creator_step", 1)
-        req_data = conversation_history.get("agent_requirements", {})
+        current_step = self.conversation_history.get("agent_creator_step", 1)
+        req_data = self.conversation_history.get("agent_requirements", {})
         
         # Collect requirements
         req, next_step, next_prompt = collect_requirements(
@@ -1602,23 +1602,23 @@ Let's create your agent!
                 next_step = 4
         
         # Update conversation history
-        conversation_history["agent_creator_step"] = next_step
-        conversation_history["agent_requirements"] = req.to_dict()
+        self.conversation_history["agent_creator_step"] = next_step
+        self.conversation_history["agent_requirements"] = req.to_dict()
         
         if next_step > 9:
             # All steps complete, trigger scaffolding
-            conversation_history["agent_creator_active"] = False
-            self._save_conversation_history(conversation_history)
+            self.conversation_history["agent_creator_active"] = False
+            self._save_conversation_history()
             
             return next_prompt + "\n\n" + self._agent_scaffold_impl()
         else:
-            self._save_conversation_history(conversation_history)
+            self._save_conversation_history()
             return next_prompt
     
     def _agent_scaffold_impl(self):
         """Implementation for scaffolding the agent project files."""
         conversation_history = self._load_conversation_history()
-        req_data = conversation_history.get("agent_requirements", {})
+        req_data = self.conversation_history.get("agent_requirements", {})
         
         if not req_data:
             return "❌ No agent requirements found. Start the agent creator first."
@@ -1640,9 +1640,9 @@ Let's create your agent!
             project_dir = write_agent_project(req)
             
             # Store project directory in conversation history
-            conversation_history["agent_project_dir"] = project_dir
-            conversation_history["agent_package_format"] = req.package_format
-            self._save_conversation_history(conversation_history)
+            self.conversation_history["agent_project_dir"] = project_dir
+            self.conversation_history["agent_package_format"] = req.package_format
+            self._save_conversation_history()
             
             return f"""✅ **Agent project created successfully!**
 
@@ -1669,8 +1669,8 @@ Ready to build the package? (Proceed automatically...)
     def _agent_package_impl(self):
         """Implementation for building the agent package."""
         conversation_history = self._load_conversation_history()
-        project_dir = conversation_history.get("agent_project_dir")
-        package_format = conversation_history.get("agent_package_format", "wheel")
+        project_dir = self.conversation_history.get("agent_project_dir")
+        package_format = self.conversation_history.get("agent_package_format", "wheel")
         
         if not project_dir:
             return "❌ No agent project found. Create an agent first."
@@ -1679,8 +1679,8 @@ Ready to build the package? (Proceed automatically...)
         
         if success:
             # Store build status
-            conversation_history["agent_built"] = True
-            self._save_conversation_history(conversation_history)
+            self.conversation_history["agent_built"] = True
+            self._save_conversation_history()
             
             return message + "\n\n**Ready to install?** Say 'install my agent' or I can do it automatically now."
         else:
@@ -1689,8 +1689,8 @@ Ready to build the package? (Proceed automatically...)
     def _agent_install_impl(self, start_agent=True):
         """Implementation for installing the agent into VOLTTRON."""
         conversation_history = self._load_conversation_history()
-        project_dir = conversation_history.get("agent_project_dir")
-        req_data = conversation_history.get("agent_requirements", {})
+        project_dir = self.conversation_history.get("agent_project_dir")
+        req_data = self.conversation_history.get("agent_requirements", {})
         
         if not project_dir:
             return "❌ No agent project found. Create an agent first."
@@ -1701,7 +1701,7 @@ Ready to build the package? (Proceed automatically...)
         req = AgentRequirements.from_dict(req_data)
         
         # Check if agent was built
-        if not conversation_history.get("agent_built"):
+        if not self.conversation_history.get("agent_built"):
             # Build first
             success, build_msg = build_package(project_dir, req.package_format)
             if not success:
@@ -1716,8 +1716,8 @@ Ready to build the package? (Proceed automatically...)
         )
         
         if success:
-            conversation_history["agent_installed"] = True
-            self._save_conversation_history(conversation_history)
+            self.conversation_history["agent_installed"] = True
+            self._save_conversation_history()
             
             return message + f"""
 
@@ -1851,7 +1851,7 @@ Ready to build the package? (Proceed automatically...)
             Args:
                 lines: Number of recent log lines to show (default: 20)
             """
-            return show_recent_logs(lines)
+            return show_recent_logs()
         
         @self.agent.tool_plain  # type: ignore[union-attr]
         def check_volttron_installation_tool() -> str:
@@ -1881,7 +1881,7 @@ Ready to build the package? (Proceed automatically...)
                 agent_name: Name or UUID of the agent to verify
                 verification_type: Type of verification (basic, comprehensive)
             """
-            return verify_agent_uninstalled(agent_name, verification_type)
+            return verify_agent_uninstalled(agent_name)
         
         @self.agent.tool_plain  # type: ignore[union-attr]
         def get_volttron_next_steps_tool() -> str:
@@ -1923,7 +1923,7 @@ Ready to build the package? (Proceed automatically...)
             return setup_postgresql_database(db_name, db_user, db_password)
         
         @self.agent.tool_plain  # type: ignore[union-attr]
-        def create_historian_config_tool(historian_type: str = "postgresql", db_config: dict = None) -> str:
+        def create_historian_config_tool(historian_type: str = "postgresql", db_config: Optional[dict] = None) -> str:
             """Create historian agent configuration file.
             
             Args:
@@ -1949,11 +1949,11 @@ Ready to build the package? (Proceed automatically...)
             # Initialize wizard state in conversation history
             conversation_history = self._load_conversation_history()
             
-            conversation_history["agent_creator_active"] = True
-            conversation_history["agent_creator_step"] = 1
-            conversation_history["agent_requirements"] = {}
+            self.conversation_history["agent_creator_active"] = True
+            self.conversation_history["agent_creator_step"] = 1
+            self.conversation_history["agent_requirements"] = {}
             
-            self._save_conversation_history(conversation_history)
+            self._save_conversation_history()
             
             welcome = """
 🎉 **Welcome to the VOLTTRON Agent Creator!**
@@ -2045,11 +2045,11 @@ Let's create your agent!
             if next_step > 9:
                 # All steps complete, trigger scaffolding
                 conversation_history["agent_creator_active"] = False
-                self._save_conversation_history(conversation_history)
+                self._save_conversation_history()
                 
                 return next_prompt + "\n\n" + agent_scaffold_tool()
             else:
-                self._save_conversation_history(conversation_history)
+                self._save_conversation_history()
                 return next_prompt
         
         @self.agent.tool_plain  # type: ignore[union-attr]
@@ -2091,7 +2091,7 @@ Let's create your agent!
                 # Store project directory in conversation history
                 conversation_history["agent_project_dir"] = project_dir
                 conversation_history["agent_package_format"] = req.package_format
-                self._save_conversation_history(conversation_history)
+                self._save_conversation_history()
                 
                 return f"""✅ **Agent project created successfully!**
 
@@ -2137,7 +2137,7 @@ Ready to build the package? (Proceed automatically...)
             if success:
                 # Store build status
                 conversation_history["agent_built"] = True
-                self._save_conversation_history(conversation_history)
+                self._save_conversation_history()
                 
                 return message + "\n\n**Ready to install?** Say 'install my agent' or I can do it automatically now."
             else:
@@ -2184,7 +2184,7 @@ Ready to build the package? (Proceed automatically...)
             
             if success:
                 conversation_history["agent_installed"] = True
-                self._save_conversation_history(conversation_history)
+                self._save_conversation_history()
                 
                 return message + f"""
 
@@ -2210,38 +2210,38 @@ Ready to build the package? (Proceed automatically...)
     def _register_volttron_tools_on_agent(self, agent):
         """Register VOLTTRON control tools on a specific agent."""
         @agent.tool_plain  # type: ignore[union-attr]
-            def start_volttron_tool() -> str:
+        def start_volttron_tool() -> str:
             """Start the VOLTTRON platform."""
             return start_volttron()
         
         @agent.tool_plain  # type: ignore[union-attr]
-            def stop_volttron_tool() -> str:
+        def stop_volttron_tool() -> str:
             """Stop the VOLTTRON platform."""
             return stop_volttron()
         
         @agent.tool_plain  # type: ignore[union-attr]
-            def check_volttron_status_tool() -> str:
+        def check_volttron_status_tool() -> str:
             """Check VOLTTRON platform status and show recent logs."""
             return check_volttron_status()
             
         @agent.tool_plain  # type: ignore[union-attr]
-            def simple_volttron_status_check_tool() -> str:
+        def simple_volttron_status_check_tool() -> str:
             """Simple check if VOLTTRON is running with minimal output."""
             return simple_volttron_status_check()
         
         @agent.tool_plain  # type: ignore[union-attr]
-            def list_agents_tool() -> str:
+        def list_agents_tool() -> str:
             """List all installed VOLTTRON agents."""
             return vctl_list_agents()
         
         @agent.tool_plain  # type: ignore[union-attr]
-            def install_agent_tool(agent_name: str) -> str:
+        def install_agent_tool(agent_name: str) -> str:
             """Install a VOLTTRON agent by name."""
             return vctl_install_agent(agent_name)
     
         
         @agent.tool_plain  # type: ignore[union-attr]
-            def start_agent_creator_tool() -> str:
+        def start_agent_creator_tool() -> str:
             """Start the agent creation wizard to build a custom VOLTTRON agent.
             
             Use this tool when the user wants to create a new agent, build a custom agent,
