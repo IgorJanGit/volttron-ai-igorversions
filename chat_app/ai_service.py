@@ -3272,30 +3272,6 @@ You can use "vctl status" to see all agents and their tags."""
         return None  
     
 
-    def _should_check_volttron_installation(self, message: str) -> bool:
-        """
-        Determine if we should check VOLTTRON installation based on the message content.
-        Returns True for first-time interactions or general VOLTTRON queries.
-        """
-        message_lower = message.lower().strip()
-        
-       
-        if self.volttron_checked:
-            return False
-            
-  
-        if len(self.conversation_history) == 0:
-            return True
-            
-     
-        general_keywords = [
-            'help', 'what can you do', 'how does this work', 'what is volttron',
-            'get started', 'tutorial', 'how to', 'what should i do',
-            'status', 'hello', 'hi', 'hey', 'getting started'
-        ]
-        
-        return any(keyword in message_lower for keyword in general_keywords)
-    
     def _detect_context_reversal(self, message: str) -> Tuple[bool, str]:
         """Enhanced contextual reversal detection with conversation history analysis."""
         message_lower = message.lower().strip()
