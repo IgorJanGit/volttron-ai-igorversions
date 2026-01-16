@@ -1457,6 +1457,9 @@ Please specify which agent to uninstall. Examples:
 💡 **Tip:** Use **"List agents"** first to see available agents with their UUIDs."""
         elif 'config directory' in title or 'create the config directory' in title:
             return f"🎯 Executing option {option_num}: **{option['title']}**\n\n{option['description']}\n\nLet me know if you'd like me to help with this specific task!"
+        
+        # Default case if no condition matched
+        return f"🎯 Executing option {option_num}: **{option['title']}**\n\n{option['description']}"
     
     def _execute_next_step(self) -> str:
         """Execute the next logical step based on current fake driver setup state."""
