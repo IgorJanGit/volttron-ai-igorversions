@@ -1132,7 +1132,7 @@ class {req.name.replace("-", "_").title().replace("_", "")}Agent(Agent):
         # You can add more code here or create new periodic functions:
         # 
         # def _poll_api(self):
-        #     '''Fetch data from external API'''
+        #     'Fetch data from external API'
         #     response = requests.get(self.api_url)
         #     data = response.json()
         #     self.vip.pubsub.publish("pubsub", "api/data", message=data)

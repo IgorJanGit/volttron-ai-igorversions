@@ -2017,8 +2017,8 @@ Let's create your agent!
             _, _, first_prompt = collect_requirements({}, 1, "")
             
             # Add CTA to first step
-        first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1)
-        return welcome + first_prompt_with_cta
+            first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1)
+            return welcome + first_prompt_with_cta
         
         @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_creator_next_step_tool(user_input: str) -> str:
