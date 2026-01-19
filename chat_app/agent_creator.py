@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 from chat_app.volttron_commands import (
@@ -203,7 +203,7 @@ Add implementation code in the generated agent template where you see TODO comme
 """
 
 
-def collect_requirements(conversation_state: Dict, step: int, user_input: str) -> Tuple[AgentRequirements, int, str]:
+def collect_requirements(conversation_state: Dict, step: float, user_input: str) -> Tuple[AgentRequirements, float, str]:
     """
     Collect agent requirements step-by-step from user input.
     
@@ -1043,7 +1043,7 @@ class {req.name.replace("-", "_").title().replace("_", "")}Agent(Agent):
         
         # === SUBSCRIBE TO TOPICS ===
         # If you want to listen to data from other agents, subscribe here
-        {self._generate_topic_subscriptions(req)}
+        {_generate_topic_subscriptions(req)}
         
         # === START PERIODIC TASKS ===
         # Schedule the _send_heartbeat method to run every N seconds
@@ -1124,7 +1124,7 @@ class {req.name.replace("-", "_").title().replace("_", "")}Agent(Agent):
         
         Other agents subscribed to your topic will receive this message.
         """
-        {self._generate_heartbeat_publishes(req)}
+        {_generate_heartbeat_publishes(req)}
         
         _log.debug("Heartbeat sent")
         
@@ -1377,7 +1377,7 @@ See LICENSE file for details.
 
 def _generate_default_config(req: AgentRequirements) -> str:
     """Generate default configuration JSON."""
-    config = {
+    config: Dict[str, Any] = {
         "heartbeat_period": 30
     }
     
@@ -1456,28 +1456,28 @@ def write_agent_project(requirements: AgentRequirements, output_dir: Optional[st
     """
     if output_dir is None:
         workspace_root = Path(__file__).parent.parent
-        output_dir = workspace_root / "agents" / requirements.name
+        output_path = workspace_root / "agents" / requirements.name
     else:
-        output_dir = Path(output_dir)
+        output_path = Path(output_dir)
     
     # Create directory structure
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
     
     # Generate all files
     files = generate_templates(requirements)
     
     # Write files
     for filepath, content in files.items():
-        full_path = output_dir / filepath
+        full_path = output_path / filepath
         full_path.parent.mkdir(parents=True, exist_ok=True)
         
         with open(full_path, 'w') as f:
             f.write(content)
     
     _log = logging.getLogger(__name__)
-    _log.info(f"Agent project written to: {output_dir}")
+    _log.info(f"Agent project written to: {output_path}")
     
-    return str(output_dir)
+    return str(output_path)
 
 
 def build_package(project_dir: str, format: str = "wheel") -> Tuple[bool, str]:

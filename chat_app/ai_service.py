@@ -1143,12 +1143,12 @@ class AIService:
         reversal_phrases = [
             "i changed my mind", "i change my mind", "change my mind", "changed my mind",
             "actually don't", "actually, don't", "actually no", "actually, no",
-            "never mind", "nevermind", "cancel that", "undo that", "reverse that",
+            "never mind", "nevermind", "cancel that", "undo that", "reverse that", "reverse it",
             "stop that", "wait, don't", "wait don't", "actually stop", "actually, stop",
-            "on second thought", "forget that", "abort", "cancel", "undo", "go back",
+            "on second thought", "forget that", "forget it", "abort", "cancel", "undo", "go back",
             "dont do that", "don't do that", "not what i want", "that's not what i want",
             "that's wrong", "wait", "hold on", "scratch that", "nope", "no wait",
-            "actually", "instead", "rather", "i don't want", "don't want that"
+            "actually", "instead", "rather", "i don't want", "don't want that", "i made a mistake"
         ]
         
         for phrase in reversal_phrases:
@@ -1175,13 +1175,15 @@ class AIService:
                 elif self.last_action:
                     return True, f"It sounds like you want to reverse the last action ({self.last_action}). What would you like me to do instead?"
                 else:
+                    # No last_action tracked, check conversation history
                     recent_action_suggestion = self._analyze_conversation_for_reversal()
                     if recent_action_suggestion:
                         self.awaiting_reversal_confirmation = True
                         return True, recent_action_suggestion
                     else:
+                        # No action to reverse found
                         self.awaiting_reversal_confirmation = False
-                        return True, "I noticed you changed your mind, but I'm not sure what to reverse. Can you tell me what you'd like me to help you with instead?"
+                        return False, ""
         
         return False, ""
     

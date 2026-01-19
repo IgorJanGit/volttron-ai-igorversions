@@ -79,7 +79,8 @@ def send_message(message: str, verbose: bool = True) -> Dict:
         response = requests.post(
             CHAT_URL,
             json={"message": message},
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=60  # 60 second timeout for AI processing
         )
         response.raise_for_status()
         result = response.json()
