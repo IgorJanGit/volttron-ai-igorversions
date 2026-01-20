@@ -110,7 +110,7 @@ class TestSearchGitHubForAgent:
         assert 'Status: No matches found' in result
         assert 'Matches found: 0' in result
         assert 'nonexistent' in result
-        assert 'Suggestion:' in result
+        assert 'Options:' in result
         assert 'Repositories scanned:' in result
     
     def test_api_request_failed(self):
