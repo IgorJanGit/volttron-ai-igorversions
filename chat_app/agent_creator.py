@@ -222,474 +222,198 @@ def collect_requirements(conversation_state: Dict, step: float, user_input: str)
         req = AgentRequirements()
     
     # Process current step
+    # Allow blank/empty input to continue (for steps that just need confirmation)
+    blank_continue_steps = [3.6]  # Steps where blank input means "continue"
+    blank_skip_steps = [5, 6, 8]  # Steps where blank input means "none/skip"
+    
+    if step in blank_continue_steps and not user_input.strip():
+        user_input = "continue"
+    elif step in blank_skip_steps and not user_input.strip():
+        user_input = "none"
+    
     prompts = {
-        1: """📝 **Step 1/10: Agent Name**
+        1: """📝  Step 1/10: Agent Name
 
-**What is an Agent Name?**
-The agent name is a unique identifier for your agent package. It will be used as:
-- Directory name for your agent project
-- Package name in Python
-- Part of the agent's identity on the VOLTTRON platform
+Choose a name for your agent (like naming a file or folder).
 
-**Naming Rules:**
-✓ Use lowercase letters, numbers, and hyphens
-✓ Start with a letter (not a number)
-✓ Keep it descriptive but concise
-✗ No spaces or special characters (@, #, etc.)
+Rules:
+  ✓ Use lowercase letters and hyphens
+  ✓ Start with a letter
+  ✓ Be descriptive
+  ✗ No spaces or special characters
 
-**Examples:**
-- `temperature-monitor` - Monitors temperature sensors
-- `hvac-controller` - Controls HVAC systems
-- `weather-fetcher` - Fetches external weather data
-- `data-aggregator` - Aggregates data from multiple sources
-
-**📚 Reference:** https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
+Examples:
+  • temperature-monitor
+  • hvac-controller
+  • weather-fetcher
+  • data-aggregator
 
 What should we call your agent?""",
 
-        2: """🏷️ **Step 2/10: VIP Identity**
+        2: """🏷️  Step 2/10: VIP Identity
 
-**What is a VIP Identity?**
-VIP (VOLTTRON Interconnect Protocol) identity is how your agent identifies itself on the message bus. Other agents use this identity to:
-- Send RPC (Remote Procedure Call) requests to your agent
-- Recognize your agent's publications
-- Authenticate communications
+Think of this as your agent's unique ID (like a phone number).
+Other agents use this to communicate with your agent.
 
-**Identity Guidelines:**
-- Can be the same as agent name or more descriptive
-- Use dot notation for hierarchical organization (e.g., `campus.building1.controller`)
-- Must be unique across all running agents
-- Common patterns: `service.function`, `location.device.type`
+Examples:
+  • monitor.temperature
+  • campus.hvac.controller
+  • weather.openweather
 
-**Examples:**
-- `monitor.temperature` - Temperature monitoring service
-- `campus.hvac.controller` - HVAC controller for campus
-- `api.weather.openweather` - OpenWeather API integration
-- `historian.sqlite` - SQLite historian service
-
-**Why it matters:**
-When another agent calls: `self.vip.rpc.call("monitor.temperature", "get_current_temp")`
-they're using YOUR VIP identity to reach your agent.
-
-**📚 Reference:** VOLTTRON uses VIP for all inter-agent communication
+Guidelines:
+  • Must be unique across all agents
+  • Can use dots for organization
+  • Often similar to your agent name
 
 What VIP identity should your agent use?""",
 
-        3: """📖 **Step 3/10: Agent Description**
+        3: """📖  Step 3/10: Agent Description
 
-**Purpose:**
-A clear description helps users (including future you!) understand what the agent does.
-This description will appear in:
-- Package metadata (pyproject.toml)
-- README.md file
-- Agent documentation
-- `vctl list` output
+Describe what your agent does in 1-2 sentences.
 
-**Best Practices:**
-✓ Be concise but complete (1-2 sentences)
-✓ Describe WHAT the agent does, not HOW
-✓ Mention key integrations or data sources
-✓ State the primary purpose
-
-**Examples:**
-- "Monitors temperature sensors and publishes alerts when thresholds are exceeded"
-- "Fetches weather data from OpenWeatherMap API and publishes to VOLTTRON message bus"
-- "Aggregates power consumption data from multiple buildings and stores to database"
-- "Controls HVAC systems based on occupancy and temperature setpoints"
+Examples:
+  • "Monitors temperature sensors and sends alerts when too hot"
+  • "Fetches weather data every hour and shares it"
+  • "Tracks building energy usage and saves to database"
+  • "Controls thermostat based on room occupancy"
 
 Provide a brief description of what your agent does:""",
 
-        3.5: """🔗 **Step 4/10: Documentation URL (Optional)**
+        3.5: """🔗  Step 4/10: Documentation URL (Optional)
 
-**NEW FEATURE: AI-Powered Implementation Guidance!**
+Got a link to API docs or device documentation?
+I'll read it and add helpful hints to your code!
 
-If you have documentation for an API, service, or device you want to integrate, paste the URL here and I'll:
-✅ Analyze the documentation automatically
-✅ Identify authentication methods (API keys, OAuth, etc.)
-✅ Extract API endpoints and data formats
-✅ Suggest dependencies (Python packages)
-✅ Generate TODO comments with implementation steps
-✅ Add recommendations directly to your agent code
+What I'll do:
+  • Figure out how to connect (API keys, etc.)
+  • Suggest Python packages you'll need
+  • Add TODO notes with implementation steps
 
-**Supported URL Types:**
-1. **API Documentation:** OpenAPI/Swagger, REST API docs, GraphQL
-   Example: https://openweathermap.org/api
-2. **GitHub Repositories:** README files, SDK documentation
-   Example: https://github.com/eclipse/paho.mqtt.python
-3. **Service Documentation:** IoT platforms, database guides
-   Example: https://docs.aws.amazon.com/iot/
-4. **Protocol Specifications:** Modbus, BACnet, MQTT
-   Example: https://mosquitto.org/documentation/
+Examples:
+  • https://openweathermap.org/api
+  • https://github.com/eclipse/paho.mqtt.python
+  • https://docs.aws.amazon.com/iot/
 
-**What You'll Get:**
-The generated agent will include comments like:
-```python
-# TODO: API Integration
-# - Endpoint: https://api.example.com/v1/data
-# - Authentication: Bearer token required
-# - Response format: JSON
-# - Add 'requests' to dependencies
-#
-# TODO: Error Handling
-# - Network failures: Retry with exponential backoff
-# - Rate limiting: Respect 60 calls/minute limit
-```
-
-**Note:** This step is OPTIONAL. Leave blank, type 'skip', or 'none' if you don't have a URL.
+Don't have a URL? Just press Enter to skip (completely optional).
 
 Enter documentation URL (or press Enter to skip):""",
 
-        4: """🎨 **Step 5/10: Template Type**
+        4: """🎨  Step 5/10: Template Type
 
-**What are Agent Templates?**
-Templates provide pre-built agent structures with common VOLTTRON patterns. Each template includes extensive comments explaining VOLTTRON concepts.
+Choose a starting template for your agent:
 
-**Choose Your Template:**
+  1. minimal - Basic agent (for learning or simple tasks)
+     • Starts, stops, sends simple messages
+     • Good for: Learning VOLTTRON basics
 
-**1. minimal** - Basic Agent (Learning & Simple Tasks)
-   ✓ VIP connection and authentication
-   ✓ Configuration management via config store
-   ✓ Heartbeat publishing
-   ✓ Basic pub/sub messaging
-   ✓ Lifecycle management (onstart/onstop)
-   
-   **Use When:** Learning VOLTTRON, simple monitoring, basic data processing
-   **Example:** Heartbeat monitor, simple data logger
+  2. listener - Monitors and reacts to data
+     • Listens to topics and processes messages
+     • Good for: Sensor monitoring, filtering data
 
-**2. listener** - Data Pipeline Agent (Topic Monitoring)
-   ✓ All minimal features PLUS:
-   ✓ Configurable message filtering (by topic or content)
-   ✓ Data transformation and enrichment
-   ✓ Message forwarding to other topics
-   ✓ Rate limiting (prevent flooding)
-   ✓ RPC methods for runtime control
-   
-   **Use When:** Monitoring topics, filtering data, transforming messages
-   **Example:** Sensor data filter, message router, data preprocessor
+  3. driver - Polls devices on a schedule
+     • Connects to devices/APIs regularly
+     • Good for: Weather data, periodic sensor reads
 
-**3. driver** - Device Interface Agent (Scheduled Polling)
-   ✓ All minimal features PLUS:
-   ✓ Scheduled device polling (interval or cron)
-   ✓ Point map configuration (sensor definitions)
-   ✓ Protocol support (simulator, Modbus, BACnet, HTTP API)
-   ✓ Standard VOLTTRON device topic publishing
-   ✓ Error handling with automatic retries
-   ✓ Connection management
-   
-   **Use When:** Hardware integration, periodic data collection, device monitoring
-   **Example:** Weather station driver, building automation interface
+  4. historian - Saves data to a database
+     • Stores all sensor data for later analysis
+     • Good for: Long-term data storage, reporting
 
-**4. historian** - Data Storage Agent (Persistence)
-   ✓ All minimal features PLUS:
-   ✓ Data capture from multiple topics
-   ✓ Batching (performance optimization)
-   ✓ Database storage (SQLite, PostgreSQL, MongoDB)
-   ✓ RPC query interface with time-range filters
-   ✓ Automatic data retention and cleanup
-   ✓ Statistics tracking
-   
-   **Use When:** Long-term data storage, analytics, reporting, audit trails
-   **Example:** Sensor historian, event logger, time-series database
-
-**📚 Reference:** https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
+Not sure? Pick 2 (listener) - it's the most flexible.
 
 Enter number (1-4) or name (minimal/listener/driver/historian):""",
 
-        5: """📡 **Step 6/10: Topics to Subscribe**
+        5: """📡  Step 6/10: Subscribe Topics
 
-**What is Pub/Sub?**
-VOLTTRON uses a publish/subscribe messaging pattern. Agents subscribe to topics to receive messages published by other agents.
+What messages should your agent listen for?
 
-**Topic Structure:**
-Topics use a hierarchical structure with forward slashes:
-`category/subcategory/specific/item`
+Examples:
+  • devices/building1/temperature  (one sensor)
+  • devices/*/temperature  (all temperature sensors)
+  • devices/building1/#  (everything from building 1)
+  • weather/current  (weather updates)
 
-**Wildcard Support:**
-- `#` - Multi-level wildcard (matches all remaining levels)
-- `*` - Single-level wildcard (matches one level)
+Wildcards:
+  • * = one level
+  • # = everything after this point
 
-**Common Topic Patterns:**
+Multiple topics? Separate with commas.
+Not sure? Just press Enter to skip.
 
-**Device Topics:**
-- `devices/campus/building1/#` - All devices in building 1
-- `devices/*/temperature` - Temperature from all buildings
-- `devices/campus/building1/hvac/all` - All data from specific device
+Which topics should your agent subscribe to? (comma-separated, or press Enter)""",
 
-**System Topics:**
-- `heartbeat/#` - All agent heartbeats
-- `platform/status` - Platform status updates
-- `alerts/#` - All system alerts
+        6: """📤  Step 7/10: Publish Topics
 
-**Custom Topics:**
-- `weather/current` - Current weather data
-- `analysis/results` - Analysis outputs
-- `commands/thermostat` - Thermostat commands
+What messages will your agent send out?
 
-**How Subscriptions Work:**
-```python
-# Your agent will automatically call _handle_message() when a message
-# arrives on any subscribed topic
-def _handle_message(self, peer, sender, bus, topic, headers, message):
-    # Process the incoming message
-    print(f"Received on {topic}: {message}")
-```
+Examples:
+  • devices/myagent/temperature  (sensor data)
+  • alerts/temperature/high  (alerts)
+  • status/myagent  (status updates)
+  • analysis/myagent/results  (analysis results)
 
-**Examples:**
-- Subscribe to all device data: `devices/#`
-- Subscribe to specific sensor: `devices/campus/building1/sensor1/temperature`
-- Subscribe to multiple topics: `heartbeat/listener, devices/hvac/#, weather/current`
+Tips:
+  • Be specific (include your agent name)
+  • Other agents will listen to these topics
 
-**📚 Reference:** https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html#setting-up-a-subscription
+Multiple topics? Separate with commas.
+Don't need to publish? Just press Enter to skip.
 
-Which topics should your agent subscribe to? (comma-separated, or 'none')""",
+Which topics will your agent publish to? (comma-separated, or press Enter)""",
 
-        6: """📤 **Step 7/10: Topics to Publish**
+        7: """⏰  Step 8/10: Schedule
 
-**Publishing Data:**
-When your agent has data to share with other agents, it publishes to topics. Any agent subscribed to those topics will receive your message.
+Should your agent run on a schedule or just react to events?
 
-**Topic Naming Best Practices:**
-✓ Use descriptive, hierarchical names
-✓ Be consistent with existing topic conventions
-✓ Put most specific info last
-✓ Avoid overly generic names
+Options:
 
-**Standard VOLTTRON Topic Conventions:**
+  1. none - Only reacts when messages arrive
+     Choose for: Monitoring and responding to sensors
 
-**Device Data (if acting as a driver):**
-- `devices/{campus}/{building}/{device}/all` - All device points
-- `devices/{campus}/{building}/{device}/point/{point_name}` - Specific point
+  2. interval - Runs every X seconds/minutes/hours
+     Choose for: Polling APIs, periodic data collection
+     Examples: '30s', '5m', '1h'
 
-**Analysis/Results:**
-- `analysis/{agent_name}/results` - Analysis outputs
-- `analysis/{agent_name}/alerts` - Generated alerts
-- `analysis/{agent_name}/status` - Agent status updates
+  3. cron - Runs at specific times
+     Choose for: Daily reports, specific time tasks
+     Examples: '0 0 * * *' (daily at midnight)
 
-**Custom Data:**
-- `weather/{service}/current` - Current weather from external service
-- `energy/{building}/consumption` - Energy consumption data
-- `occupancy/{building}/{room}` - Occupancy status
-
-**Status/Heartbeat:**
-- `heartbeat/{agent_identity}` - Your agent's heartbeat
-- `status/{agent_name}` - Agent status messages
-
-**How Publishing Works:**
-```python
-# Publish a message to a topic
-self.vip.pubsub.publish(
-    'pubsub',  # Message bus
-    'devices/campus/building1/temp',  # Topic
-    message={'temperature': 72.5, 'units': 'F'}  # Message data
-)
-```
-
-**Examples:**
-- Publish device data: `devices/monitor/temperature`
-- Publish analysis: `analysis/hvac-optimizer/recommendations`
-- Publish alerts: `alerts/temperature/high-threshold`
-- Multiple topics: `status/myagent, results/processed-data`
-
-**📚 Reference:** https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html#publishing-data-to-the-message-bus
-
-Which topics will your agent publish to? (comma-separated, or 'none')""",
-
-        7: """⏰ **Step 8/10: Schedule Configuration**
-
-**What is Scheduling?**
-Agents can run code at specific times or intervals using VOLTTRON's scheduler. Common for periodic data collection, routine maintenance, or time-based actions.
-
-**Scheduling Options:**
-
-**1. none** - No Scheduled Tasks
-   - Agent is purely event-driven (responds to subscriptions or RPC calls)
-   - Code runs only when messages arrive
-   - **Use when:** Your agent only needs to react to events
-   
-**2. interval** - Periodic Execution
-   - Runs at regular intervals (every N seconds/minutes/hours)
-   - Simple and reliable for routine tasks
-   - **Use when:** Polling APIs, collecting data, periodic checks
-   
-   **Format Examples:**
-   - `30` or `30s` - Every 30 seconds
-   - `5m` - Every 5 minutes
-   - `1h` - Every hour
-   - `3600` - Every 3600 seconds (1 hour)
-
-**3. cron** - Time-Based Scheduling
-   - Runs at specific times using cron expressions
-   - More complex but very flexible
-   - **Use when:** Daily reports, end-of-day processing, specific times
-   
-   **Cron Format:** `minute hour day month weekday`
-   
-   **Examples:**
-   - `0 0 * * *` - Daily at midnight
-   - `0 */6 * * *` - Every 6 hours
-   - `30 2 * * 1` - Every Monday at 2:30 AM
-   - `0 9 1 * *` - First day of month at 9 AM
-
-**How Scheduling Works:**
-```python
-# Interval example - called every 60 seconds
-@Core.periodic(60)
-def poll_data(self):
-    data = self.fetch_from_device()
-    self.publish_data(data)
-
-# Cron example - called daily at midnight
-@Core.schedule(cron('0 0 * * *'))
-def daily_report(self):
-    self.generate_and_send_report()
-```
-
-**Choosing the Right Schedule:**
-- **Weather API:** interval:300 (5 minutes)
-- **Building data:** interval:60 (1 minute)
-- **Daily reports:** cron:0 0 * * *
-- **Business hours:** cron:0 9-17 * * 1-5
-
-**📚 Reference:** https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html#periodics-and-scheduling
-
-Does your agent need a schedule? Enter:
-1. **none** - No scheduling
-2. **interval** - Periodic execution
-3. **cron** - Time-based schedule
+Not sure? Pick 'none'.
 
 Your choice:""",
 
-        8: """🔧 **Step 9/10: Python Dependencies**
+        8: """🔧  Step 9/10: Dependencies
 
-**What are Dependencies?**
-Dependencies are Python packages your agent needs to function. They're automatically installed when your agent is installed.
+Need any extra Python packages?
 
-**Default Dependency:**
-✓ `volttron>=11.0.0rc0` (always included)
+Common packages:
+  • requests  (for APIs and web requests)
+  • pandas  (for data analysis)
+  • paho-mqtt  (for MQTT messaging)
+  • psycopg2-binary  (for PostgreSQL)
 
-**Common Additional Dependencies:**
+Multiple packages? Separate with commas.
+Not sure? Just press Enter to skip.
 
-**Data Processing:**
-- `numpy` - Numerical computing
-- `pandas>=1.5.0` - Data analysis and manipulation
-- `scipy` - Scientific computing
+Enter additional packages (comma-separated, or press Enter):
+(volttron is already included)""",
 
-**Web & APIs:**
-- `requests` - HTTP library for REST APIs
-- `aiohttp` - Async HTTP client/server
-- `websockets` - WebSocket client/server
-
-**Databases:**
-- `psycopg2-binary` - PostgreSQL adapter
-- `pymongo` - MongoDB driver
-- `sqlalchemy` - SQL toolkit and ORM
-
-**IoT Protocols:**
-- `paho-mqtt` - MQTT client
-- `pymodbus` - Modbus protocol
-- `bacpypes` - BACnet protocol
-
-**Data Formats:**
-- `pyyaml` - YAML parser
-- `xmltodict` - XML to dict converter
-- `msgpack` - Binary serialization
-
-**Utilities:**
-- `python-dateutil` - Date/time utilities
-- `pytz` - Timezone handling
-- `schedule` - Job scheduling
-
-**Version Pinning:**
-- Exact version: `requests==2.28.0`
-- Minimum version: `pandas>=1.5.0`
-- Range: `numpy>=1.20,<2.0`
-- No version: `pyyaml` (latest)
-
-**How Dependencies are Used:**
-They'll be added to your `pyproject.toml`:
-```toml
-dependencies = [
-    "volttron>=11.0.0rc0",
-    "requests",
-    "pandas>=1.5.0",
-    "paho-mqtt"
-]
-```
-
-**Examples:**
-- API agent: `requests, python-dateutil`
-- Data analysis: `numpy, pandas, scipy`
-- IoT integration: `paho-mqtt, pymodbus`
-- Database storage: `psycopg2-binary, sqlalchemy`
-
-**📚 Reference:** Standard Python packaging conventions
-
-Enter additional packages (comma-separated, or 'none'):
-(volttron>=11.0.0rc0 is already included)""",
-
-        9: """📦 **Step 10/10: Packaging Method**
-
-**How to Package Your Agent:**
-
-**1. wheel** - Build Installable Package (RECOMMENDED)
-   ✓ Creates a `.whl` file (Python Wheel format)
-   ✓ Standard Python package format
-   ✓ Can be distributed and installed anywhere
-   ✓ Installed via: `vctl install agent.whl`
-   ✓ Clean separation from development
-   ✓ **Best for:** Production deployments, sharing agents, final versions
-   
-   **What happens:**
-   ```bash
-   python -m build -w
-   # Creates: dist/my_agent-0.1.0-py3-none-any.whl
-   
-   vctl install dist/my_agent-0.1.0-py3-none-any.whl \
-       --vip-identity my.agent \
-       --start
-   ```
-
-**2. editable** - Development Mode
-   ✓ Installs as "editable" (pip install -e .)
-   ✓ Code changes take effect immediately (no rebuild)
-   ✓ Easier for active development and testing
-   ✓ Agent runs from source directory
-   ✓ **Best for:** Active development, testing, debugging
-   
-   **What happens:**
-   ```bash
-   pip install -e .
-   # Agent runs from your source directory
-   # Edit files → Restart agent → Changes apply
-   ```
-
-**Comparison:**
-
-| Feature | Wheel | Editable |
-|---------|-------|----------|
-| For production | ✅ Yes | ❌ No |
-| For development | ⚠️ Rebuilds needed | ✅ Yes |
-| Code changes | Rebuild required | Immediate |
-| Distribution | Easy to share | Source only |
-| Installation | Standard | Development |
-
-**Recommendation:**
-- **During development:** Use editable mode for faster iteration
-- **For deployment:** Build a wheel for clean installation
-- **You can do both:** Start with editable, build wheel when ready
-
-**The Build Process:**
-After this step, I will:
-1. Generate all agent files with extensive comments
-2. Create pyproject.toml with your dependencies
-3. Build the package in your chosen format
-4. Offer to install it to VOLTTRON
-
-**📚 Reference:** https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html#packaging-and-installation
+        9: """📦  Step 10/10: Packaging
 
 How should we package your agent?
-1. **wheel** - Build installable package (recommended for production)
-2. **editable** - Development mode (recommended for active development)
+
+Options:
+
+  1. wheel (recommended)
+     • Standard installable package
+     • Easy to share and deploy
+     • Need to rebuild if you change code
+
+  2. editable
+     • For active development
+     • Code changes apply immediately
+     • Not for sharing/production
+
+Not sure? Pick 'wheel' (option 1).
 
 Your choice:"""
     }

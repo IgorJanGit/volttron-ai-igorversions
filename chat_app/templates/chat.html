@@ -243,8 +243,9 @@
         }
 
         async function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message) return;
+            const message = messageInput.value;
+            // Allow blank messages for wizard (Enter to skip)
+            // if (!message) return;
 
             // Add to history
             chatHistory.push(message);

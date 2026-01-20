@@ -1574,7 +1574,7 @@ Let's create your agent!
         _, _, first_prompt = collect_requirements({}, 1, "")
         
         # Add CTA to first step
-        first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1)
+        first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1, {})
         return welcome + first_prompt_with_cta
     
     def _agent_creator_next_step_impl(self, user_input):
@@ -1599,12 +1599,12 @@ Let's create your agent!
             try:
                 recommendations = analyze_url_for_agent(req.url, req.description)
                 req.ai_recommendations = recommendations
-                next_prompt = f"✅ **URL Analysis Complete!**\n\n{recommendations[:500]}...\n\n(Full recommendations will be included in generated code)\n\nPress Enter to continue to template selection."
-                # Auto-advance to step 4 after showing recommendations
-                next_step = 4
+                next_prompt = f"✅ **URL Analysis Complete!**\n\n{recommendations[:500]}...\n\n(Full recommendations will be included in generated code)\n\nPress Enter to continue."
+                # Stay at 3.6, will advance to 4 on next input
+                # next_step is already 3.6
             except Exception as e:
                 next_prompt = f"⚠️ Could not analyze URL: {str(e)}\n\nContinuing without URL analysis. Press Enter to continue."
-                next_step = 4
+                # Stay at 3.6, will advance to 4 on next input
         
         # Update conversation history
         self.agent_creator_state["agent_creator_step"] = next_step
@@ -1618,10 +1618,16 @@ Let's create your agent!
             return next_prompt + "\n\n" + self._agent_scaffold_impl()
         else:
             self._save_conversation_history()
-            return self._add_wizard_cta(next_prompt, next_step)
+            return self._add_wizard_cta(next_prompt, next_step, req.to_dict())
     
-    def _add_wizard_cta(self, prompt: str, step: int) -> str:
+    def _add_wizard_cta(self, prompt: str, step: int, req_data: dict = None) -> str:
         """Add clear call-to-action footer to wizard prompts."""
+        # Special handling for step 2 to show actual suggested VIP identity
+        if step == 2 and req_data and req_data.get('vip_identity'):
+            suggested_vip = req_data.get('vip_identity')
+            cta = f"\n\n💡 **Suggested:** {suggested_vip}\n   Type **'yes'** to use it, or provide your own."
+            return prompt + cta
+        
         cta_messages = {
             1: "\n\n💡 **Ready?** Just type your agent name (e.g., 'weather-monitor') and press enter.",
             2: "\n\n💡 **Suggested:** Based on your agent name, I recommend this VIP identity.\n   Type **'yes'** to use it, or provide your own.",
@@ -2019,7 +2025,7 @@ Let's create your agent!
             _, _, first_prompt = collect_requirements({}, 1, "")
             
             # Add CTA to first step
-            first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1)
+            first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1, {})
             return welcome + first_prompt_with_cta
         
         @self.agent.tool_plain  # type: ignore[union-attr]
@@ -2420,6 +2426,10 @@ Ready to build the package? (Proceed automatically...)
     async def generate_response(self, message: str) -> str:
         """Generate a response to the user's message using function tools."""
         try:
+            # Handle blank/empty messages (but allow them for wizard)
+            if (not message or not message.strip()) and not self.agent_creator_state.get("agent_creator_active"):
+                return "👋 I'm here! What would you like to do?"
+            
             is_reversal, reversal_response = self._detect_context_reversal(message)
             if is_reversal:
                 return reversal_response
