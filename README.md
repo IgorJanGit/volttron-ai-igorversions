@@ -22,11 +22,11 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your API key
 
-# Run
+# Run chat agent
 python -m chat_app
 ```
 
-Open http://127.0.0.1:8000
+Open http://127.0.0.1:8000 to access the chat interface
 
 ## Configuration
 
