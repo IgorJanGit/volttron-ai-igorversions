@@ -106,6 +106,12 @@ def create_app(model_name: str) -> FastAPI:
             "model": model_name
         }
     
+    
+    @app.get("/ping")
+    async def ping_ai():
+        """Test AI API connection."""
+        result = await ai_service.ping_ai()
+        return result
     @app.get("/models")
     async def get_available_models():
         """Get information about available models."""

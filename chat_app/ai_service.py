@@ -425,6 +425,120 @@ class AIService:
         except Exception as e:
             print(f"Could not save conversation history: {e}")
     
+    async def ping_ai(self) -> dict:
+        """
+        Test AI API connection with a simple ping request.
+        Works with multiple providers: custom webapp, Ollama, OpenAI-compatible APIs.
+        Returns response indicating if AI API is working.
+        """
+        try:
+            import httpx
+            
+            # Detect provider based on model configuration
+            ai_webapp_url = os.getenv("AI_WEBAPP_URL")
+            ai_api_key = os.getenv("AI_API_KEY")
+            is_ollama = self.model_name.startswith("ollama:")
+            
+            # Extract actual model name (remove provider prefix)
+            actual_model = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
+            
+            # Configure based on provider
+            if is_ollama:
+                # Ollama provider
+                base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+                endpoint = f"{base_url}/api/generate" if not base_url.endswith("/v1") else f"{base_url}/chat/completions"
+                headers = {"Content-Type": "application/json"}
+                
+                # Try OpenAI-compatible endpoint first (Ollama v1 API)
+                if "/v1" in base_url or endpoint.endswith("/completions"):
+                    payload = {
+                        "model": actual_model,
+                        "messages": [{"role": "user", "content": "test"}],
+                        "max_tokens": 10
+                    }
+                else:
+                    # Native Ollama API
+                    payload = {
+                        "model": actual_model,
+                        "prompt": "test",
+                        "stream": False
+                    }
+                    
+            elif ai_webapp_url and ai_api_key:
+                # Custom webapp (PNNL AI Incubator or similar)
+                endpoint = ai_webapp_url if "/completions" in ai_webapp_url else f"{ai_webapp_url}/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {ai_api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": actual_model,
+                    "messages": [{"role": "user", "content": "test"}],
+                    "max_tokens": 10
+                }
+                
+            else:
+                # Standard OpenAI/Anthropic via pydantic-ai (no direct ping available)
+                return {
+                    "status": "info",
+                    "message": f"Using {self.model_name} via Pydantic AI",
+                    "provider": self.model_name.split(":")[0] if ":" in self.model_name else "default",
+                    "details": "Direct API ping not available for this provider. Try sending a chat message to test."
+                }
+            
+            # Make the API request
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(endpoint, headers=headers, json=payload)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Extract response content based on provider format
+                    if is_ollama and "response" in data:
+                        # Native Ollama format
+                        sample = data.get("response", "")[:50]
+                    elif "choices" in data:
+                        # OpenAI-compatible format
+                        sample = data.get("choices", [{}])[0].get("message", {}).get("content", "")[:50]
+                    else:
+                        sample = str(data)[:50]
+                    
+                    return {
+                        "status": "success",
+                        "message": "AI API is working",
+                        "provider": "ollama" if is_ollama else "custom" if ai_webapp_url else "standard",
+                        "model": self.model_name,
+                        "endpoint": endpoint,
+                        "response_sample": sample
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "message": f"API returned status {response.status_code}",
+                        "provider": "ollama" if is_ollama else "custom" if ai_webapp_url else "standard",
+                        "endpoint": endpoint,
+                        "details": response.text[:200]
+                    }
+                    
+        except httpx.ConnectError as e:
+            return {
+                "status": "error",
+                "message": "Cannot connect to AI API",
+                "details": f"Connection failed: {str(e)}. Check if the service is running and accessible."
+            }
+        except httpx.TimeoutException:
+            return {
+                "status": "error",
+                "message": "AI API request timed out",
+                "details": "The request took too long. Check if the service is responsive."
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": "Failed to ping AI API",
+                "details": f"{type(e).__name__}: {str(e)}"
+            }
+
     def _register_fallback_function_tools(self):
         """Register all VOLTTRON function tools with their schemas."""
         self.function_tools = {
@@ -2481,6 +2595,39 @@ Ready to build the package? (Proceed automatically...)
                  'agents' in message_lower)):
                 print(f"DIRECT OVERRIDE: Executing vctl_status for '{message}' query")
                 return self.call_function_tool("vctl_status", {})
+            
+            # Handle ping/test AI commands
+            if any(phrase in message_lower for phrase in [
+                'ping', 'ping ai', 'test ai', 'test the ai', 'check ai', 
+                'ai status', 'is ai working', 'test connection'
+            ]):
+                print(f"🏓 PING REQUEST: Testing AI API connection")
+                ping_result = await self.ping_ai()
+                
+                # Format the result nicely for chat display
+                if ping_result['status'] == 'success':
+                    return (
+                        f"✅ **AI API Connection Test - Success**\n\n"
+                        f"**Provider**: {ping_result.get('provider', 'N/A')}\n"
+                        f"**Model**: {ping_result.get('model', 'N/A')}\n"
+                        f"**Endpoint**: {ping_result.get('endpoint', 'N/A')}\n"
+                        f"**Sample Response**: {ping_result.get('response_sample', 'N/A')}\n\n"
+                        f"🎉 The AI is working perfectly!"
+                    )
+                elif ping_result['status'] == 'info':
+                    return (
+                        f"ℹ️ **AI API Connection Test - Info**\n\n"
+                        f"**Provider**: {ping_result.get('provider', 'N/A')}\n"
+                        f"**Message**: {ping_result.get('message', 'N/A')}\n"
+                        f"**Details**: {ping_result.get('details', 'N/A')}"
+                    )
+                else:
+                    return (
+                        f"❌ **AI API Connection Test - Failed**\n\n"
+                        f"**Error**: {ping_result.get('message', 'Unknown error')}\n"
+                        f"**Details**: {ping_result.get('details', 'No details available')}\n\n"
+                        f"Please check your AI configuration."
+                    )
             
             print(f"DEBUG generate_response: Checking direct_result for '{message}'")
             direct_result = self._handle_direct_command(message)
