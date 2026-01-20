@@ -86,6 +86,7 @@ class AgentRequirements:
 def analyze_url_for_agent(url: str, description: str) -> str:
     """
     Analyze a URL (documentation, API, GitHub repo) and provide implementation recommendations.
+    Enhanced to better extract API endpoints, authentication, and code examples.
     
     Args:
         url: URL to documentation or API reference
@@ -97,109 +98,241 @@ def analyze_url_for_agent(url: str, description: str) -> str:
     try:
         import requests
         from bs4 import BeautifulSoup
+        import re
+        import json
         
         # Fetch URL content
         headers = {'User-Agent': 'Mozilla/5.0 (VOLTTRON Agent Creator)'}
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         
         # Parse HTML
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Extract relevant text (remove scripts, styles)
-        for script in soup(["script", "style"]):
+        # Extract code blocks (pre, code tags)
+        code_blocks = []
+        for tag in soup.find_all(['pre', 'code']):
+            code = tag.get_text().strip()
+            if code and len(code) > 10:
+                code_blocks.append(code)
+        
+        # Look for API endpoints
+        endpoints = []
+        endpoint_patterns = [
+            r'https?://[^\s<>"]+/api/[^\s<>"]+',
+            r'GET|POST|PUT|DELETE|PATCH\s+/[^\s<>"]+',
+            r'endpoint[:\s]+[\'"]?(/[^\s<>"\'\)]+)',
+        ]
+        
+        page_text = soup.get_text()
+        for pattern in endpoint_patterns:
+            matches = re.findall(pattern, page_text, re.IGNORECASE)
+            endpoints.extend(matches[:5])  # Limit to 5
+        
+        # Look for authentication mentions
+        auth_info = []
+        auth_keywords = ['api key', 'api_key', 'apikey', 'authorization', 'bearer', 'token', 'authentication', 'oauth']
+        for keyword in auth_keywords:
+            if keyword in page_text.lower():
+                # Find context around keyword
+                pattern = rf'.{{0,100}}{keyword}.{{0,100}}'
+                match = re.search(pattern, page_text, re.IGNORECASE | re.DOTALL)
+                if match:
+                    context = ' '.join(match.group().split())
+                    if context not in auth_info:
+                        auth_info.append(context[:200])
+        
+        # Look for request/response examples
+        examples = []
+        for block in code_blocks:
+            if any(keyword in block.lower() for keyword in ['request', 'response', 'curl', 'http', 'json', '{', 'example']):
+                examples.append(block[:300])
+                if len(examples) >= 3:
+                    break
+        
+        # Extract main content text
+        for script in soup(["script", "style", "nav", "footer", "header"]):
             script.decompose()
         
         text = soup.get_text()
-        
-        # Clean up text
         lines = (line.strip() for line in text.splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = ' '.join(chunk for chunk in chunks if chunk)
+        cleaned_text = ' '.join(chunk for chunk in chunks if chunk)
         
-        # Limit text length for analysis
-        max_chars = 8000
-        if len(text) > max_chars:
-            text = text[:max_chars] + "..."
-        
-        # Generate recommendations based on content
+        # Build enhanced recommendations
         recommendations = f"""
-# Implementation Recommendations Based on {url}
+# 📋 Implementation Recommendations Based on {url}
 
-## Analyzed Content Summary
-The documentation has been analyzed to provide implementation guidance.
+## 🎯 Agent Purpose
+{description}
 
-## Suggested Implementation Approach
+"""
+        
+        # Add discovered API endpoints
+        if endpoints:
+            recommendations += "## 🌐 Discovered API Endpoints\n"
+            for i, endpoint in enumerate(set(endpoints[:5]), 1):
+                recommendations += f"{i}. `{endpoint}`\n"
+            recommendations += "\n"
+        
+        # Add authentication info
+        if auth_info:
+            recommendations += "## 🔐 Authentication Information\n"
+            for info in auth_info[:2]:
+                recommendations += f"- {info}\n"
+            recommendations += "\n**TODO**: Store API keys in config file, load via `self.config.get('api_key')`\n\n"
+        
+        # Add code examples if found
+        if examples:
+            recommendations += "## 📝 Found Code Examples\n\n"
+            for i, example in enumerate(examples, 1):
+                recommendations += f"### Example {i}:\n```\n{example}\n```\n\n"
+        
+        recommendations += """
+## 🛠️ Implementation Guide
 
-### 1. API/Service Integration
-TODO: Based on the documentation, implement the following:
-- Review the API endpoints or service methods described
-- Identify authentication requirements (API keys, OAuth, etc.)
-- Determine data formats (JSON, XML, CSV, etc.)
+### Step 1: Agent Configuration
+Add to your agent's config file:
+```python
+# In config file
+{
+    "api_url": "BASE_API_URL_HERE",
+    "api_key": "YOUR_API_KEY_HERE",
+    "poll_interval": 60,
+    "publish_topic": "devices/{agent_name}/data"
+}
+```
 
-### 2. Data Flow
-TODO: Configure VOLTTRON topics for:
-- **Subscribe to**: Topics that trigger data collection from this service
-- **Publish to**: Topics where processed data should be sent
-  Example: devices/{{{{AGENT_NAME}}}}/status, analysis/{{{{AGENT_NAME}}}}/results
+### Step 2: Make API Calls
+In your agent's scheduled method:
+```python
+def fetch_data(self):
+    \"\"\"Fetch data from API and publish to VOLTTRON.\"\"\"
+    try:
+        # Get config
+        api_url = self.config.get('api_url')
+        api_key = self.config.get('api_key')
+        
+        # Make API request
+        headers = {
+            'Authorization': f'Bearer {api_key}',  # Or 'X-API-Key': api_key
+            'Content-Type': 'application/json'
+        }
+        response = requests.get(api_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # Parse response
+        data = response.json()
+        
+        # Publish to VOLTTRON
+        topic = self.config.get('publish_topic')
+        self.vip.pubsub.publish(
+            'pubsub',
+            topic,
+            message=data
+        )
+        
+        _log.info(f"Published data to {topic}")
+        
+    except requests.exceptions.RequestException as e:
+        _log.error(f"API request failed: {e}")
+    except Exception as e:
+        _log.error(f"Error processing data: {e}")
+```
 
-### 3. Scheduling
-TODO: Based on the service requirements:
-- If polling is needed: Use interval schedule (e.g., every 60 seconds)
-- If event-driven: Subscribe to triggering topics
-- If time-based: Use cron schedule
+### Step 3: Dependencies
+Add to your pyproject.toml:
+```toml
+dependencies = [
+    "requests>=2.28.0",
+]
+```
 
-### 4. Dependencies
-TODO: You may need to add these packages:
-- `requests` - For HTTP API calls
-- `beautifulsoup4` - For HTML parsing (if needed)
-- Add any SDK mentioned in the documentation
+### Step 4: Error Handling
+- ✅ Network timeouts (10-30 seconds)
+- ✅ Retry logic with exponential backoff
+- ✅ Rate limit handling (check API docs)
+- ✅ Invalid response handling
+- ✅ Logging all errors
 
-### 5. Configuration Fields
-TODO: Add to your agent's config:
-- API endpoint URL
-- Authentication credentials (use environment variables!)
-- Polling interval or schedule
-- Data transformation settings
+### Step 5: Testing
+1. Test API call manually with curl or Postman
+2. Verify authentication works
+3. Check response format matches expectations
+4. Test agent with VOLTTRON platform
+5. Monitor logs for errors
 
-### 6. Error Handling
-TODO: Implement robust error handling for:
-- Network failures (retries with exponential backoff)
-- Authentication errors
-- Rate limiting (respect API limits)
-- Invalid data responses
+## 🔗 Reference
+Full documentation: {url}
 
-### 7. Implementation Steps
-1. Read the full documentation at: {url}
-2. Set up authentication (API keys, tokens, etc.)
-3. Test API calls manually first
-4. Implement data fetch in your agent's scheduled method
-5. Transform data to VOLTTRON message format
-6. Publish to appropriate topics
-7. Add logging for debugging
-8. Test with VOLTTRON platform
+## ⚠️ Important Notes
+- Store API keys securely (use config, not hardcode)
+- Handle rate limits (add delays between requests if needed)
+- Log all API calls for debugging
+- Validate all response data before publishing
+- Add comprehensive error handling
 
-## Next Steps
-The generated agent template will include TODO comments with these recommendations.
-You'll need to fill in the specific API calls and data transformations based on the documentation.
+## 📦 Next Steps
+The generated agent code includes TODO comments at key integration points.
+Fill in the specific API calls based on the documentation above.
 """
         
         return recommendations.strip()
         
+    except requests.exceptions.RequestException as e:
+        return f"""
+# ⚠️ URL Fetch Failed
+
+Could not fetch {url}: {str(e)}
+
+## Manual Implementation Guide
+
+Since automatic analysis failed, please manually review the documentation and implement:
+
+### 1. Find the Base API URL
+Look for the API endpoint in documentation
+
+### 2. Check Authentication
+- API key in header?
+- Bearer token?
+- OAuth required?
+
+### 3. Identify Key Endpoints
+List the endpoints you'll use (GET, POST, etc.)
+
+### 4. Review Response Format
+- JSON? XML? CSV?
+- What fields are important?
+
+### 5. Check Rate Limits
+- How many requests per minute/hour?
+- Do you need delays?
+
+### Implementation Template
+```python
+# In your agent's scheduled method:
+def fetch_data(self):
+    api_url = self.config.get('api_url', 'https://api.example.com')
+    api_key = self.config.get('api_key')
+    
+    headers = {{'Authorization': f'Bearer {{api_key}}'}}
+    response = requests.get(api_url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        self.vip.pubsub.publish('pubsub', 'your/topic', message=data)
+```
+
+Visit {url} to review the full documentation.
+"""
     except Exception as e:
         return f"""
-# URL Analysis Note
+# ⚠️ Analysis Error
 
-Could not automatically analyze {url}: {str(e)}
+Error analyzing {url}: {str(e)}
 
-Please manually review the documentation and implement:
-1. Authentication method
-2. API endpoints or data sources
-3. Request/response formats
-4. Error handling requirements
-5. Rate limits or usage restrictions
-
-Add implementation code in the generated agent template where you see TODO comments.
+Please review the documentation manually and implement the agent based on the API requirements.
+Add your implementation in the generated agent template where you see TODO comments.
 """
 
 
