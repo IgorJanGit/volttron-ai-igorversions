@@ -2632,7 +2632,7 @@ Ready to build the package? (Proceed automatically...)
             print(f"DEBUG generate_response: Checking direct_result for '{message}'")
             direct_result = self._handle_direct_command(message)
             if direct_result:
-                return f"ℹ️ **Using fallback command handler** (AI connection unavailable)\n\n{direct_result}"
+                return direct_result
             
             if self.agent:
                 return await self._generate_response_with_pydantic_ai(message)

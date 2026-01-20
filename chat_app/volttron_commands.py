@@ -2899,7 +2899,12 @@ Repositories scanned: {len(all_repos)}
 Matches found: 0
 
 No repositories matching '{agent_name}' were found in the {github_org} organization.
-Suggestion: Try a different agent name or check available agents."""
+
+**Options:**
+1. Try a different agent name
+2. Create a new agent called '{agent_name}'
+
+**To create this agent, say:** "create a new agent called {agent_name}"""
         
         matches.sort(key=lambda x: (x['stars'], x['updated']), reverse=True)
         
