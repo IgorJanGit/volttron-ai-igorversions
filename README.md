@@ -28,12 +28,9 @@ cd volttron-ai
 pip install -r requirements.txt
 ```
 
-3. **Install VOLTTRON dependency (required)**:
-```bash
-pip install zope.event
-```
+Note: All required dependencies including `zope.event` are included in `requirements.txt`.
 
-4. **Set up your environment**:
+3. **Set up your environment**:
 ```bash
 # Copy the example environment file
 cp .env.example .env
