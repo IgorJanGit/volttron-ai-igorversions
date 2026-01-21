@@ -1676,6 +1676,8 @@ This wizard will help you build a production-ready VOLTTRON agent with:
 **🚀 Process:**
 10 quick steps → Generate code → Build package → Install to VOLTTRON
 
+**⚠️ Important:** Generated code is a starting template. Review and test thoroughly before production use.
+
 **📖 Reference Documentation:**
 https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
 
@@ -1864,6 +1866,8 @@ Ready to build the package? (Proceed automatically...)
             return message + f"""
 
 🎉 **Congratulations!** Your agent is now running!
+
+⚠️ **Remember:** This is a template. Review and test the generated code before production use.
 
 **What's next?**
 
@@ -2127,6 +2131,8 @@ This wizard will help you build a production-ready VOLTTRON agent with:
 **🚀 Process:**
 10 quick steps → Generate code → Build package → Install to VOLTTRON
 
+**⚠️ Important:** Generated code is a starting template. Review and test thoroughly before production use.
+
 **📖 Reference Documentation:**
 https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
 
@@ -2333,6 +2339,8 @@ Ready to build the package? (Proceed automatically...)
                 return message + f"""
 
 🎉 **Congratulations!** Your agent is now running!
+
+⚠️ **Remember:** This is a template. Review and test the generated code before production use.
 
 **What's next?**
 
