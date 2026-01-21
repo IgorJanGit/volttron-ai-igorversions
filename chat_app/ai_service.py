@@ -1596,7 +1596,7 @@ Please specify which agent to uninstall. Examples:
             # If using custom OpenAI-compatible API (like PNNL), configure it
             if hasattr(self, 'custom_client') and self.custom_client:
                 try:
-                    from pydantic_ai.models.openai import OpenAIModel
+                    from pydantic_ai.models.openai import OpenAIChatModel
                     from pydantic_ai.providers.openai import OpenAIProvider
                     # Use custom model name (without provider prefix)
                     model_name = self.custom_model if hasattr(self, 'custom_model') else self.model_name
@@ -1606,7 +1606,7 @@ Please specify which agent to uninstall. Examples:
                         api_key=os.getenv("AI_API_KEY")
                     )
                     # Create OpenAI model with custom provider
-                    model = OpenAIModel(
+                    model = OpenAIChatModel(
                         model_name,
                         provider=provider
                     )

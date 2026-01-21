@@ -240,3 +240,19 @@ Contributions welcome! Submit Pull Requests to the VOLTTRON organization.
 ## License
 
 Part of the VOLTTRON platform. See main VOLTTRON repository for licensing.
+
+### Custom AI Endpoint Setup (PNNL AI Incubator)
+
+If you're using a custom OpenAI-compatible API endpoint (like PNNL AI Incubator), configure it in your `.env` file:
+
+```bash
+AI_WEBAPP_URL=https://ai-incubator-api.pnnl.gov
+AI_API_KEY=your_api_key_here
+AI_MODEL=claude-haiku-4-5-20251001-v1-birthright
+
+# Also set these for compatibility:
+LLM_API_KEY=your_api_key_here
+OPENAI_API_KEY=your_api_key_here
+```
+
+**Note**: When using a custom endpoint, the app will automatically use OpenAI-compatible mode, even if your model name contains "claude" or other provider names.
