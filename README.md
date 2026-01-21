@@ -12,20 +12,52 @@ AI-powered chat interface for VOLTTRON platform management and agent creation.
 
 ## Quick Start
 
+### Requirements
+- **Python 3.12 or higher** (tested with 3.12+)
+- pip (Python package manager)
+- Git
+
+### Installation (Recommended - Virtual Environment)
+
 ```bash
-# Requires Python 3.9 or higher
-# Clone and install
+# 1. Clone the repository
 git clone https://github.com/VOLTTRON/volttron-ai.git
 cd volttron-ai
+
+# 2. Create a virtual environment (strongly recommended)
+python3.12 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Configure environment
+cp .env.example .env
+# Edit .env with your API key
+
+# 5. Run the application
+python -m chat_app
+```
+
+### Alternative Installation (System-wide)
+
+```bash
+# Clone repository
+git clone https://github.com/VOLTTRON/volttron-ai.git
+cd volttron-ai
+
+# Install with Python 3.12 explicitly
+python3.12 -m pip install -r requirements.txt
 
 # Configure
 cp .env.example .env
 # Edit .env with your API key
 
-# Run chat agent
-python -m chat_app
+# Run with Python 3.12
+python3.12 -m chat_app
 ```
+
+**⚠️ Important**: Always use the same Python version for both installation and running. If you install with `python3.12`, run with `python3.12`.
 
 Open http://127.0.0.1:8000 to access the chat interface
 
@@ -112,6 +144,45 @@ python3 tests/test_discovery_quick.py
 
 ## Troubleshooting
 
+### Common Installation Issues
+
+**❌ ModuleNotFoundError: No module named 'pydantic_ai'**
+
+This usually means you're using a different Python version than the one used for installation.
+
+**Solutions:**
+1. **Virtual Environment (Recommended)**:
+   ```bash
+   python3.12 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   python -m chat_app
+   ```
+
+2. **Explicit Python Version**:
+   ```bash
+   # Install with specific version
+   python3.12 -m pip install -r requirements.txt
+   # Run with same version
+   python3.12 -m chat_app
+   ```
+
+3. **Check your Python version**:
+   ```bash
+   python --version  # Should be 3.12+
+   which python      # See which Python is being used
+   ```
+
+**⚠️ Ubuntu System Package Warnings**
+
+If you see warnings like:
+```
+WARNING: Error parsing dependencies of distro-info: Invalid version: '0.23ubuntu1'
+WARNING: Error parsing dependencies of python-debian: Invalid version: '0.1.36ubuntu1'
+```
+
+**These warnings are harmless** and can be safely ignored. They don't affect the application - they're just Ubuntu system packages with versioning that pip doesn't recognize.
+
 ### VOLTTRON Not Found
 ```bash
 # Check if installed
@@ -152,7 +223,7 @@ volttron-ai/
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12+
 - FastAPI, Pydantic-AI, Uvicorn
 - Optional: VOLTTRON platform
 
