@@ -111,6 +111,8 @@ AI: "🔍 Analyzing... Found: REST API, requires API key
      Recommendations included in code"
 ```
 
+**⚠️ Important Note**: Generated agent code is a starting template and may require modifications to work with your specific use case. The AI provides scaffolding and best practices, but you should review and test the code thoroughly before deploying to production.
+
 ## VOLTTRON Commands
 
 Control VOLTTRON with natural language:
