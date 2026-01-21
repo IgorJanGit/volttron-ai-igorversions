@@ -13,6 +13,7 @@ AI-powered chat interface for VOLTTRON platform management and agent creation.
 ## Quick Start
 
 ```bash
+# Requires Python 3.9 or higher
 # Clone and install
 git clone https://github.com/VOLTTRON/volttron-ai.git
 cd volttron-ai
@@ -151,7 +152,7 @@ volttron-ai/
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - FastAPI, Pydantic-AI, Uvicorn
 - Optional: VOLTTRON platform
 
