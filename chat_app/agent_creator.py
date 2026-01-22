@@ -336,6 +336,99 @@ Add your implementation in the generated agent template where you see TODO comme
 """
 
 
+
+
+def check_agent_name_exists(agent_name: str, base_dir: str = "agents") -> Tuple[bool, str]:
+    """
+    Check if an agent with this name already exists in the agents directory.
+    
+    Args:
+        agent_name: The agent name to check
+        base_dir: The base directory where agents are stored
+        
+    Returns:
+        Tuple of (exists: bool, message: str)
+    """
+    try:
+        agent_dir = os.path.join(base_dir, agent_name)
+        if os.path.exists(agent_dir):
+            return True, f"⚠️ An agent named '{agent_name}' already exists in {agent_dir}."
+        return False, ""
+    except Exception as e:
+        return False, ""
+
+
+def check_vip_identity_exists(vip_identity: str) -> Tuple[bool, str]:
+    """
+    Check if a VIP identity is already in use by an installed agent.
+    
+    Args:
+        vip_identity: The VIP identity to check
+        
+    Returns:
+        Tuple of (exists: bool, message: str)
+    """
+    try:
+        # Try to find vctl command
+        vctl_paths = [
+            os.path.expanduser("~/.local/bin/vctl"),
+            "/usr/local/bin/vctl",
+            os.path.expanduser("~/volttron/env/bin/vctl")
+        ]
+        
+        vctl_cmd = None
+        for path in vctl_paths:
+            if os.path.exists(path):
+                vctl_cmd = path
+                break
+        
+        if not vctl_cmd:
+            # Can't check without vctl, allow it
+            return False, ""
+        
+        # Get VOLTTRON_HOME
+        volttron_home = os.environ.get("VOLTTRON_HOME", os.path.expanduser("~/.volttron"))
+        
+        # Check if VOLTTRON is running
+        ps_result = subprocess.run(
+            "ps aux | grep bin/volttron | grep -v grep",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if ps_result.returncode != 0:
+            # VOLTTRON not running, can't check
+            return False, ""
+        
+        # Get installed agents
+        cmd_str = f"export VOLTTRON_HOME={volttron_home} && {vctl_cmd} status"
+        result = subprocess.run(
+            cmd_str,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            # Parse the output to find VIP identities
+            # Format is usually: UUID AGENT_NAME VIP_IDENTITY STATUS
+            lines_output = result.stdout.strip().split('\n')
+            for line in lines_output:
+                parts = line.split()
+                # VIP identity is typically the 3rd column
+                if len(parts) >= 3 and parts[2] == vip_identity:
+                    return True, f"⚠️ VIP identity '{vip_identity}' is already in use by agent '{parts[1]}'."
+        
+        return False, ""
+        
+    except Exception as e:
+        # If we can't check, allow it
+        return False, ""
+
+
 def collect_requirements(conversation_state: Dict, step: float, user_input: str) -> Tuple[AgentRequirements, float, str]:
     """
     Collect agent requirements step-by-step from user input.
@@ -553,11 +646,31 @@ Your choice:"""
     
     # Update requirements based on step
     if step == 1 and user_input:
-        req.name = user_input.strip().lower().replace(" ", "-")
+        proposed_name = user_input.strip().lower().replace(" ", "-")
+        
+        # Check if agent name already exists
+        exists, warning_msg = check_agent_name_exists(proposed_name)
+        if exists:
+            # Agent name is already used, ask user to choose another
+            return req, 1, f"""{warning_msg}
+
+Please choose a different agent name:"""
+        
+        req.name = proposed_name
         req.vip_identity = req.name.replace("-", ".")  # Suggest default
         
     elif step == 2 and user_input:
-        req.vip_identity = user_input.strip()
+        proposed_vip = user_input.strip()
+        
+        # Check if VIP identity already exists
+        exists, warning_msg = check_vip_identity_exists(proposed_vip)
+        if exists:
+            # VIP identity is in use, ask user to choose another
+            return req, 2, f"""{warning_msg}
+
+Please choose a different VIP identity:"""
+        
+        req.vip_identity = proposed_vip
         
     elif step == 3 and user_input:
         req.description = user_input.strip()

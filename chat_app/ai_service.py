@@ -8,7 +8,7 @@ import inspect
 try:
     from pydantic_ai import Agent
 except ImportError:
-    print("Warning: Pydantic AI not available. Using OpenAI function calling only.")
+    pass  # Pydantic AI not available
     Agent = None
 
 from .volttron_commands import (
@@ -1673,25 +1673,15 @@ This wizard will help you build a production-ready VOLTTRON agent with:
    - `config/default_config.json` - Configuration template
    - `tests/test_agent.py` - Test skeleton
 
-**🚀 Process:**
-10 quick steps → Generate code → Build package → Install to VOLTTRON
-
-**⚠️ Important:** Generated code is a starting template. Review and test thoroughly before production use.
-
 **📖 Reference Documentation:**
 https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
 
-Let's create your agent!
-
+💡 **Ready to start?** Type 'yes' or press enter to begin!
 """
         
-        # Get first step prompt
-        req = AgentRequirements()
-        _, _, first_prompt = collect_requirements({}, 1, "")
-        
-        # Add CTA to first step
-        first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1, {})
-        return welcome + first_prompt_with_cta
+        # Store that we need to show the process info next
+        self.agent_creator_state["show_process_next"] = True
+        return welcome
     
     def _agent_creator_next_step_impl(self, user_input):
         """Implementation for advancing to next step in agent creator wizard."""
@@ -1699,6 +1689,25 @@ Let's create your agent!
         
         if not self.agent_creator_state.get("agent_creator_active"):
             return "❌ Agent creator not active. Start with 'create a new agent' first."
+
+        # Check if we need to show process info first
+        if self.agent_creator_state.get("show_process_next"):
+            self.agent_creator_state["show_process_next"] = False
+            process_info = """
+**🚀 Process:**
+10 quick steps → Generate code → Build package → Install to VOLTTRON
+
+**⚠️ Important:** Generated code is a starting template. Review and test thoroughly before production use.
+
+Let's begin!
+
+"""
+            # Get first step prompt
+            req = AgentRequirements()
+            _, _, first_prompt = collect_requirements({}, 1, "")
+            first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1, {})
+            return process_info + first_prompt_with_cta
+
         
         current_step = self.agent_creator_state.get("agent_creator_step", 1)
         req_data = self.agent_creator_state.get("agent_requirements", {})
@@ -1804,6 +1813,9 @@ Let's create your agent!
 1. **Review the code** - Check `{project_dir}/{req.name.replace('-', '_')}/agent.py`
 2. **Build the package** - I'll do this next automatically
 3. **Install and test** - We'll install it into VOLTTRON
+
+
+⚠️ **Note:** Generated code may require adjustments to work correctly. Please review and test thoroughly.
 
 Ready to build the package? (Proceed automatically...)
 """
@@ -2128,25 +2140,15 @@ This wizard will help you build a production-ready VOLTTRON agent with:
    - `config/default_config.json` - Configuration template
    - `tests/test_agent.py` - Test skeleton
 
-**🚀 Process:**
-10 quick steps → Generate code → Build package → Install to VOLTTRON
-
-**⚠️ Important:** Generated code is a starting template. Review and test thoroughly before production use.
-
 **📖 Reference Documentation:**
 https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/agent-development.html
 
-Let's create your agent!
-
+💡 **Ready to start?** Type 'yes' or press enter to begin!
 """
             
-            # Get first step prompt
-            req = AgentRequirements()
-            _, _, first_prompt = collect_requirements({}, 1, "")
-            
-            # Add CTA to first step
-            first_prompt_with_cta = self._add_wizard_cta(first_prompt, 1, {})
-            return welcome + first_prompt_with_cta
+            # Store that we need to show the process info next
+            self.agent_creator_state["show_process_next"] = True
+            return welcome
         
         @self.agent.tool_plain  # type: ignore[union-attr]
         def agent_creator_next_step_tool(user_input: str) -> str:
@@ -2257,7 +2259,10 @@ Let's create your agent!
 **Next Steps:**
 
 1. **Review the code** - Check `{project_dir}/{req.name.replace('-', '_')}/agent.py`
-2. **Build the package** - I'll do this next automatically
+
+⚠️ **Note:** Generated code may require adjustments to work correctly. Please review and test thoroughly.
+
+Ready to build the package? (Proceed automatically...)
 3. **Install and test** - We'll install it into VOLTTRON
 
 Ready to build the package? (Proceed automatically...)
@@ -2963,7 +2968,8 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
             'build agent', 'build custom agent', 'build new agent',
             'make agent', 'make custom agent', 'make new agent',
             'develop agent', 'develop custom agent', 'develop new agent',
-            'agent wizard', 'start wizard', 'creation wizard'
+            'agent wizard', 'start wizard', 'creation wizard',
+            'start agent', 'new agent'  # Common shortcuts
         ]
         if any(pattern in message_lower for pattern in agent_creation_patterns):
             # Make sure it's not about installing/starting an existing agent
