@@ -161,6 +161,30 @@ AVAILABLE_AGENTS = {
         'github_url': 'https://github.com/eclipse-volttron/volttron-csv-driver.git'
     },
     
+    'forward-historian': {
+        'package': 'volttron-forward-historian',
+        'vip_identity': 'forward_historian',
+        'description': 'Forward historian for sending data to other VOLTTRON instances',
+        'category': 'Historian',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-forward-historian.git'
+    },
+    
+    'ilc': {
+        'package': 'volttron-ilc',
+        'vip_identity': 'ilc',
+        'description': 'Intelligent Load Control agent for demand response',
+        'category': 'Control',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-ilc.git'
+    },
+    
+    'topic-watcher': {
+        'package': 'volttron-topic-watcher',
+        'vip_identity': 'topic_watcher',
+        'description': 'Watches and monitors specific topics on the message bus',
+        'category': 'Monitoring',
+        'github_url': 'https://github.com/eclipse-volttron/volttron-topic-watcher.git'
+    },
+    
 }
 
 def format_volttron_warnings(stderr_output):
