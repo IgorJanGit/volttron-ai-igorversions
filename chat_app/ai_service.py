@@ -2954,6 +2954,23 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         if any(indicator in message for indicator in ['http://', 'https://', 'github.com', 'www.']):
             return None
         
+        # Handle agent creation wizard triggers - MUST come before other agent patterns
+        # so "start agent creation" doesn't get confused with "start agent"
+        agent_creation_patterns = [
+            'create agent', 'create custom agent', 'create new agent', 'create a agent',
+            'agent creation', 'start agent creation', 'begin agent creation',
+            'agent creator', 'start agent creator', 'launch agent creator',
+            'build agent', 'build custom agent', 'build new agent',
+            'make agent', 'make custom agent', 'make new agent',
+            'develop agent', 'develop custom agent', 'develop new agent',
+            'agent wizard', 'start wizard', 'creation wizard'
+        ]
+        if any(pattern in message_lower for pattern in agent_creation_patterns):
+            # Make sure it's not about installing/starting an existing agent
+            if not any(word in message_lower for word in ['install', 'uninstall', 'remove', 'delete', 'status of']):
+                print(f"Detected agent creation intent in '{message}' - calling agent creator wizard")
+                return self._start_agent_creator_impl()
+        
         database_keywords = ['postgresql', 'postgres', 'mysql', 'database', 'db setup', 'sql setup']
         volttron_agent_context = ['agent', 'vctl', 'install agent', 'uninstall agent', 'agent status']
         
