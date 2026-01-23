@@ -1461,6 +1461,96 @@ def write_agent_project(requirements: AgentRequirements, output_dir: Optional[st
     return str(output_path)
 
 
+
+def _validate_python_syntax(file_path: Path) -> Tuple[bool, str]:
+    """Validate Python file syntax."""
+    try:
+        with open(file_path, 'r') as f:
+            code = f.read()
+        compile(code, str(file_path), 'exec')
+        return True, ""
+    except SyntaxError as e:
+        return False, f"Syntax error in {file_path.name} at line {e.lineno}: {e.msg}"
+    except Exception as e:
+        return False, f"Error reading {file_path.name}: {str(e)}"
+
+
+def _check_dependencies_installed(requirements: List[str]) -> Tuple[bool, List[str]]:
+    """Check if required dependencies are installed."""
+    import importlib.metadata
+    missing = []
+    
+    for req in requirements:
+        # Parse requirement (e.g., "volttron>=11.0.0rc0" -> "volttron")
+        pkg_name = req.split('>=')[0].split('==')[0].split('<')[0].strip()
+        try:
+            importlib.metadata.version(pkg_name)
+        except importlib.metadata.PackageNotFoundError:
+            missing.append(pkg_name)
+    
+    return len(missing) == 0, missing
+
+
+def _auto_install_dependencies(missing_deps: List[str]) -> Tuple[bool, str]:
+    """Automatically install missing dependencies."""
+    pip_cmd = find_pip_command()
+    if not pip_cmd:
+        return False, "pip not found"
+    
+    try:
+        for dep in missing_deps:
+            print(f"📦 Installing missing dependency: {dep}...")
+            result = subprocess.run(
+                [pip_cmd, "install", dep],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            if result.returncode != 0:
+                return False, f"Failed to install {dep}: {result.stderr}"
+        return True, f"Successfully installed: {', '.join(missing_deps)}"
+    except Exception as e:
+        return False, f"Error installing dependencies: {str(e)}"
+
+
+def _run_preflight_checks(project_dir: str) -> Tuple[bool, str]:
+    """Run comprehensive pre-flight checks before building."""
+    project_path = Path(project_dir)
+    issues = []
+    
+    # Check 1: Project structure
+    required_files = ['pyproject.toml', 'README.md']
+    for file in required_files:
+        if not (project_path / file).exists():
+            issues.append(f"Missing required file: {file}")
+    
+    # Check 2: Validate Python syntax
+    agent_py_files = list(project_path.glob("**/*.py"))
+    for py_file in agent_py_files:
+        if '__pycache__' not in str(py_file):
+            valid, error = _validate_python_syntax(py_file)
+            if not valid:
+                issues.append(error)
+    
+    # Check 3: Verify pyproject.toml is valid TOML
+    pyproject = project_path / 'pyproject.toml'
+    if pyproject.exists():
+        try:
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+            
+            with open(pyproject, 'rb') as f:
+                tomllib.load(f)
+        except Exception as e:
+            issues.append(f"Invalid pyproject.toml: {str(e)}")
+    
+    if issues:
+        return False, "\n".join([f"  ⚠️  {issue}" for issue in issues])
+    
+    return True, "✓ All pre-flight checks passed"
+
 def build_package(project_dir: str, format: str = "wheel") -> Tuple[bool, str]:
     """
     Build agent package (wheel or editable install).
