@@ -439,8 +439,8 @@ class TestDirectCommandHandling(unittest.TestCase):
         for command in test_commands:
             result = self.ai_service._handle_direct_command(command)
             # Should contain status information or expected output
-            self.assertIsNotNone(result)
-            self.assertIsInstance(result, str)
+            # AI-first: _handle_direct_command returns None, AI handles via tools
+            self.assertIsNone(result, f"Expected None for \'{command}\', AI should handle this")
             
     @patch('chat_app.volttron_commands.start_volttron')
     def test_start_volttron_command_detection(self, mock_start):
@@ -452,8 +452,8 @@ class TestDirectCommandHandling(unittest.TestCase):
         for command in test_commands:
             result = self.ai_service._handle_direct_command(command)
             # Should contain indication of starting or success
-            self.assertIsNotNone(result)
-            self.assertTrue("start" in result.lower() or "✅" in result or "success" in result.lower())
+            # AI-first: _handle_direct_command returns None, AI handles via tools
+            self.assertIsNone(result, f"Expected None for \'{command}\', AI should handle this")
             
     @patch('chat_app.volttron_commands.vctl_uninstall_agent')
     def test_uninstall_pattern_matching(self, mock_uninstall):
@@ -471,8 +471,8 @@ class TestDirectCommandHandling(unittest.TestCase):
         for command in test_commands:
             result = self.ai_service._handle_direct_command(command)
             # Should contain uninstall/remove indication or error message
-            self.assertIsNotNone(result)
-            self.assertIsInstance(result, str)
+            # AI-first: _handle_direct_command returns None, AI handles via tools
+            self.assertIsNone(result, f"Expected None for \'{command}\', AI should handle this")
             
     @patch('chat_app.volttron_commands.verify_agent_uninstalled')
     def test_verification_command_detection(self, mock_verify):
@@ -489,8 +489,8 @@ class TestDirectCommandHandling(unittest.TestCase):
         for command in test_commands:
             result = self.ai_service._handle_direct_command(command)
             # Should contain verification result or package information
-            self.assertIsNotNone(result)
-            self.assertIsInstance(result, str)
+            # AI-first: _handle_direct_command returns None, AI handles via tools
+            self.assertIsNone(result, f"Expected None for \'{command}\', AI should handle this")
             
     def test_no_command_detected(self):
         """Test when no direct command is detected."""
@@ -722,8 +722,8 @@ class TestErrorHandling(unittest.TestCase):
             for command in test_commands:
                 result = self.ai_service._handle_direct_command(command)
                 # Should detect command regardless of case and return status info
-                self.assertIsNotNone(result)
-                self.assertIsInstance(result, str)
+                # AI-first: _handle_direct_command returns None, AI handles via tools
+                self.assertIsNone(result, f"Expected None for \'{command}\', AI should handle this")
 
 
 class TestIntegrationScenarios(unittest.TestCase):
@@ -807,6 +807,10 @@ class TestIntegrationScenarios(unittest.TestCase):
             self.assertEqual(self.ai_service.last_action, "install_agent")  # Most recent action
             
     def test_get_model_info(self):
+        self.skipTest("get_model_info method removed in AI-first refactor")
+        return
+        self.skipTest("get_model_info method removed in AI-first refactor")
+        return
         """Test model information retrieval."""
         # Test with simple model name
         ai_service = AIService('gpt-4o-mini')
