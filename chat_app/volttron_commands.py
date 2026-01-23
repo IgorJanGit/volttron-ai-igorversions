@@ -5767,60 +5767,214 @@ Return code: {result.returncode}"""
         return f"❌ Error reading logs: {str(e)}"
 
 
-def fetch_webpage_content(url: str) -> str:
+
+def fetch_webpage_content(url: str, max_retries: int = 3) -> str:
     """
-    Fetch and return the content of a webpage.
+    Enhanced webpage fetching with retry logic, better parsing, and comprehensive info extraction.
     
     Args:
         url: The URL to fetch
+        max_retries: Maximum number of retry attempts
         
     Returns:
-        str: Webpage content or error message
+        str: Comprehensive webpage content or error message
     """
-    try:
-        import requests
-        from bs4 import BeautifulSoup
-        
-        print(f"DEBUG: Fetching webpage: {url}")
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
+    import requests
+    from bs4 import BeautifulSoup
+    import time
+    import re
+    from urllib.parse import urlparse
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"🌐 Fetching webpage: {url} (attempt {attempt + 1}/{max_retries})")
+            
+            # Make request with timeout
+            response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+            response.raise_for_status()
+            
+            # Parse HTML
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract metadata
+            title = soup.find('title')
+            title_text = title.get_text().strip() if title else "No title"
+            
+            meta_desc = soup.find('meta', attrs={'name': 'description'})
+            description = meta_desc.get('content', '') if meta_desc else ""
+            
+            # Remove unwanted elements
+            for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe']):
+                element.decompose()
+            
+            # Extract main content
+            main_content = None
+            for selector in ['main', 'article', '[role="main"]', '.main-content', '#content', '.content']:
+                main_content = soup.select_one(selector)
+                if main_content:
+                    break
+            
+            content_element = main_content if main_content else soup.find('body') or soup
+            
+            # Extract structured information
+            info = {
+                'url': url,
+                'title': title_text,
+                'description': description,
+                'headings': [],
+                'links': [],
+                'code_blocks': [],
+                'lists': [],
+                'tables': [],
+            }
+            
+            # Get headings (h1-h6)
+            for level in range(1, 7):
+                for heading in content_element.find_all(f'h{level}'):
+                    text = heading.get_text().strip()
+                    if text:
+                        info['headings'].append(f"{'#' * level} {text}")
+            
+            # Get important links
+            for link in content_element.find_all('a', href=True)[:20]:
+                href = link.get('href')
+                text = link.get_text().strip()
+                if text and href and not href.startswith('#'):
+                    # Make absolute URL
+                    if href.startswith('/'):
+                        parsed = urlparse(url)
+                        href = f"{parsed.scheme}://{parsed.netloc}{href}"
+                    info['links'].append(f"[{text}]({href})")
+            
+            # Get code blocks
+            for code in content_element.find_all(['pre', 'code']):
+                code_text = code.get_text().strip()
+                if code_text and len(code_text) > 10:
+                    # Get language if specified
+                    lang = code.get('class', [''])[0]
+                    if lang.startswith('language-'):
+                        lang = lang.replace('language-', '')
+                    info['code_blocks'].append({
+                        'language': lang or 'plaintext',
+                        'code': code_text[:500]  # Limit length
+                    })
+            
+            # Get lists
+            for ul in content_element.find_all(['ul', 'ol'])[:10]:
+                items = [li.get_text().strip() for li in ul.find_all('li', recursive=False)]
+                if items:
+                    info['lists'].append(items[:10])  # Max 10 items per list
+            
+            # Get tables
+            for table in content_element.find_all('table')[:5]:
+                headers = [th.get_text().strip() for th in table.find_all('th')]
+                rows = []
+                for tr in table.find_all('tr')[:10]:
+                    cells = [td.get_text().strip() for td in tr.find_all('td')]
+                    if cells:
+                        rows.append(cells)
+                if headers or rows:
+                    info['tables'].append({'headers': headers, 'rows': rows})
+            
+            # Get plain text
+            text = content_element.get_text()
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            plain_text = '\n'.join(chunk for chunk in chunks if chunk)
+            
+            # Build formatted output
+            output = f"""📄 **Webpage Content Retrieved**
+🔗 URL: {url}
+📝 Title: {title_text}
+📏 Content length: {len(plain_text)} characters
+⏱️  Retrieved: Successfully on attempt {attempt + 1}
 
-        for script in soup(["script", "style"]):
-            script.decompose()
-        
-  
-        text = soup.get_text()
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = '\n'.join(chunk for chunk in chunks if chunk)
-        
-      
-        if 'github.com' in url and '/blob/' not in url:
-            try:
-                readme_div = soup.find('article', class_='markdown-body')
-                if readme_div:
-                    text = readme_div.get_text()
-            except:
-                pass
-        
-        return f"""📄 **Webpage Content Retrieved**
-URL: {url}
-Content length: {len(text)} characters
+"""
+            
+            if description:
+                output += f"📋 **Description:**\n{description}\n\n"
+            
+            if info['headings']:
+                output += "📑 **Structure (Headings):**\n"
+                output += '\n'.join(info['headings'][:15]) + "\n\n"
+            
+            if info['code_blocks']:
+                output += f"💻 **Code Examples Found:** {len(info['code_blocks'])} blocks\n\n"
+                for i, block in enumerate(info['code_blocks'][:3], 1):
+                    output += f"Example {i} ({block['language']}):\n```{block['language']}\n{block['code'][:300]}\n```\n\n"
+            
+            if info['lists']:
+                output += f"📋 **Lists Found:** {len(info['lists'])}\n\n"
+                for i, items in enumerate(info['lists'][:2], 1):
+                    output += f"List {i}:\n"
+                    for item in items[:5]:
+                        output += f"  • {item}\n"
+                    output += "\n"
+            
+            if info['tables']:
+                output += f"📊 **Tables Found:** {len(info['tables'])}\n\n"
+            
+            if info['links']:
+                output += f"🔗 **Important Links:** ({len(info['links'])} found)\n"
+                for link in info['links'][:10]:
+                    output += f"  {link}\n"
+                output += "\n"
+            
+            # Add main text content (truncated)
+            output += f"📄 **Main Content:**\n{plain_text[:3000]}"
+            if len(plain_text) > 3000:
+                output += f"\n\n... (truncated, {len(plain_text) - 3000} more characters)"
+            
+            return output
+            
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                print(f"⏱️  Timeout, retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            return f"❌ Error: Request timed out after {max_retries} attempts (30s each). The server may be slow or unresponsive."
+            
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if hasattr(e, 'response') else 'unknown'
+            if status_code == 403:
+                return f"❌ Error 403: Access forbidden. The website blocked the request. Try accessing manually: {url}"
+            elif status_code == 404:
+                return f"❌ Error 404: Page not found. Check if the URL is correct: {url}"
+            elif status_code == 429:
+                if attempt < max_retries - 1:
+                    wait_time = 5 * (attempt + 1)
+                    print(f"⚠️  Rate limited, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                return f"❌ Error 429: Rate limited. The website is blocking too many requests. Try again later."
+            else:
+                return f"❌ HTTP Error {status_code}: {str(e)}"
+                
+        except requests.exceptions.ConnectionError:
+            if attempt < max_retries - 1:
+                print(f"🔌 Connection error, retrying...")
+                time.sleep(2)
+                continue
+            return f"❌ Connection Error: Could not connect to {url}. Check your internet connection or if the site is accessible."
+            
+        except requests.exceptions.RequestException as e:
+            return f"❌ Request Error: {str(e)}"
+            
+        except Exception as e:
+            return f"❌ Error processing webpage: {type(e).__name__}: {str(e)}"
+    
+    return f"❌ Failed to fetch webpage after {max_retries} attempts"
 
-{text[:5000]}{'...' if len(text) > 5000 else ''}"""
-        
-    except requests.RequestException as e:
-        return f"❌ Error fetching webpage: {str(e)}"
-    except Exception as e:
-        return f"❌ Error processing webpage: {str(e)}"
+
 
 
 def execute_system_command(command: str, require_sudo: bool = False) -> str:

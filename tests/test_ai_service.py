@@ -807,10 +807,6 @@ class TestIntegrationScenarios(unittest.TestCase):
             self.assertEqual(self.ai_service.last_action, "install_agent")  # Most recent action
             
     def test_get_model_info(self):
-        self.skipTest("get_model_info method removed in AI-first refactor")
-        return
-        self.skipTest("get_model_info method removed in AI-first refactor")
-        return
         """Test model information retrieval."""
         # Test with simple model name
         ai_service = AIService('gpt-4o-mini')

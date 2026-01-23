@@ -168,10 +168,6 @@ class TestAIServiceIsolated(unittest.TestCase):
         self.assertEqual(len(ai_service.conversation_history), 0)
     
     def test_model_info_retrieval(self):
-        self.skipTest("get_model_info method removed in AI-first refactor")
-        return
-        self.skipTest("get_model_info method removed in AI-first refactor")
-        return
         """Test model information retrieval."""
         from chat_app.ai_service import AIService
         ai_service = AIService('gpt-4o-mini')

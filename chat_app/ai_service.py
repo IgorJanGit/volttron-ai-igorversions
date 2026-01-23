@@ -540,6 +540,44 @@ class AIService:
                 "details": f"{type(e).__name__}: {str(e)}"
             }
 
+    def get_model_info(self) -> dict:
+        """Get information about the configured model.
+        
+        Returns:
+            dict: Model information including name, provider, and model_id
+        """
+        info = {
+            'model_name': self.model_name,
+            'model_id': self.model_name
+        }
+        
+        # Parse provider prefix if present (e.g., "openai:gpt-4o-mini")
+        if ':' in self.model_name:
+            parts = self.model_name.split(':', 1)
+            info['provider'] = parts[0]
+            info['model_id'] = parts[1]
+        
+        return info
+
+    def get_model_info(self) -> dict:
+        """Get information about the configured model.
+        
+        Returns:
+            dict: Model information including name, provider, and model_id
+        """
+        info = {
+            'model_name': self.model_name,
+            'model_id': self.model_name
+        }
+        
+        # Parse provider prefix if present (e.g., "openai:gpt-4o-mini")
+        if ':' in self.model_name:
+            parts = self.model_name.split(':', 1)
+            info['provider'] = parts[0]
+            info['model_id'] = parts[1]
+        
+        return info
+
     def _register_fallback_function_tools(self):
         """Register all VOLTTRON function tools with their schemas."""
         self.function_tools = {
