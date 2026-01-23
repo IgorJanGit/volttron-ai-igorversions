@@ -180,7 +180,28 @@ def analyze_url_for_agent(url: str, description: str) -> str:
             recommendations += "## 🔐 Authentication Information\n"
             for info in auth_info[:2]:
                 recommendations += f"- {info}\n"
-            recommendations += "\n**TODO**: Store API keys in config file, load via `self.config.get('api_key')`\n\n"
+            recommendations += """
+
+**💡 IMPLEMENTATION TIP - API Keys**: 
+Store API keys securely in your agent's config file, never in source code!
+
+**In config.json**:
+```json
+{
+    "api_key": "your-key-here",
+    "api_url": "https://api.example.com"
+}
+```
+
+**In your agent code**:
+```python
+api_key = self.config.get('api_key')
+api_url = self.config.get('api_url')
+```
+
+🔒 **Security Best Practice**: Use config files or environment variables. Never commit API keys to git!
+
+"""
         
         # Add code examples if found
         if examples:
@@ -248,12 +269,28 @@ dependencies = [
 ]
 ```
 
-### Step 4: Error Handling
-- ✅ Network timeouts (10-30 seconds)
-- ✅ Retry logic with exponential backoff
-- ✅ Rate limit handling (check API docs)
-- ✅ Invalid response handling
-- ✅ Logging all errors
+### Step 4: Error Handling Best Practices
+
+**Essential Error Handling**:
+- ✅ **Network timeouts**: Set 10-30 seconds, log with context
+- ✅ **Retry logic**: Use exponential backoff for transient failures
+- ✅ **Rate limits**: Check API docs, implement delays between requests
+- ✅ **HTTP errors**: Handle 401 (auth), 404 (not found), 500 (server errors)
+- ✅ **Invalid responses**: Validate JSON structure before processing
+- ✅ **Connection failures**: Handle DNS errors, network outages
+- ✅ **Logging**: Log ALL errors with timestamps and request details
+
+**💡 Pro Tip**: Test your agent offline to verify error handling works!
+
+**Example Error Handling**:
+```python
+except requests.exceptions.Timeout:
+    _log.error(f"⏱️ Request timeout after {timeout}s - {api_url}")
+except requests.exceptions.HTTPError as e:
+    _log.error(f"❌ HTTP {e.response.status_code}: {e.response.text[:200]}")
+except json.JSONDecodeError:
+    _log.error(f"📄 Invalid JSON response from {api_url}")
+```
 
 ### Step 5: Testing
 1. Test API call manually with curl or Postman
@@ -451,6 +488,15 @@ def collect_requirements(conversation_state: Dict, step: float, user_input: str)
     # Allow blank/empty input to continue (for steps that just need confirmation)
     blank_continue_steps = [3.6]  # Steps where blank input means "continue"
     blank_skip_steps = [5, 6, 8]  # Steps where blank input means "none/skip"
+    required_steps = [1, 2]  # Steps that CANNOT be blank
+    
+    # Check for blank input on required steps
+    if step in required_steps and not user_input.strip():
+        error_messages = {
+            1: "❌ **Agent name is required and cannot be blank.**\n\nPlease provide a name for your agent:",
+            2: "❌ **VIP identity is required and cannot be blank.**\n\nPlease provide a VIP identity for your agent:"
+        }
+        return req, step, error_messages.get(step, "❌ This field is required.")
     
     if step in blank_continue_steps and not user_input.strip():
         user_input = "continue"
@@ -1681,11 +1727,27 @@ def validate_agent_name(name: str) -> Tuple[bool, str]:
     if " " in name:
         return False, "❌ Agent name cannot contain spaces (use hyphens instead)"
     
-    if not name.replace("-", "").replace("_", "").isalnum():
-        return False, "❌ Agent name can only contain letters, numbers, hyphens, and underscores"
+    # Check for invalid starting characters
+    if not name[0].isalpha():
+        return False, "❌ Agent name must start with a letter (a-z, A-Z)"
     
-    if name[0].isdigit():
-        return False, "❌ Agent name cannot start with a number"
+    # Check for emojis and special characters
+    import unicodedata
+    for char in name:
+        category = unicodedata.category(char)
+        # Allow letters, numbers, hyphens, and underscores only
+        if char not in ['-', '_'] and not char.isalnum():
+            return False, "❌ Agent name can only contain letters, numbers, hyphens, and underscores"
+        # Reject emojis and symbols
+        if category.startswith('S') or category.startswith('C'):
+            return False, "❌ Agent name cannot contain emojis or special symbols"
+    
+    # Additional check: name should be reasonable length
+    if len(name) > 50:
+        return False, "❌ Agent name is too long (maximum 50 characters)"
+    
+    if len(name) < 2:
+        return False, "❌ Agent name is too short (minimum 2 characters)"
     
     return True, "✅ Valid agent name"
 

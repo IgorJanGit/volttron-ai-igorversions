@@ -165,6 +165,26 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        
+        .cancel-button {
+            padding: 12px 20px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+            display: none;
+        }
+        
+        .cancel-button:hover {
+            opacity: 0.9;
+        }
+        
+        .cancel-button.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -192,6 +212,7 @@
         <div class="chat-input">
             <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
             <button id="sendButton">Send</button>
+            <button id="cancelButton" class="cancel-button">Cancel</button>
         </div>
     </div>
 
@@ -199,7 +220,10 @@
         const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
+        const cancelButton = document.getElementById('cancelButton');
         const typingIndicator = document.getElementById('typingIndicator');
+        
+        let currentRequestController = null;
 
         // Chat history for arrow key navigation
         let chatHistory = [];
@@ -259,7 +283,11 @@
             // Disable input while processing
             sendButton.disabled = true;
             messageInput.disabled = true;
+            cancelButton.classList.add('visible');
             showTyping();
+
+            // Create abort controller for this request
+            currentRequestController = new AbortController();
 
             try {
                 const response = await fetch('/chat', {
@@ -267,7 +295,8 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ message: message }),
+                    signal: currentRequestController.signal
                 });
 
                 const data = await response.json();
@@ -278,14 +307,28 @@
                     addMessage(`Error: ${data.detail}`);
                 }
             } catch (error) {
-                addMessage(`Error: Unable to connect to the server. ${error.message}`);
+                if (error.name === 'AbortError') {
+                    addMessage('❌ Request cancelled by user.');
+                } else {
+                    addMessage(`Error: Unable to connect to the server. ${error.message}`);
+                }
             } finally {
                 hideTyping();
                 sendButton.disabled = false;
                 messageInput.disabled = false;
+                cancelButton.classList.remove('visible');
+                currentRequestController = null;
                 messageInput.focus();
             }
         }
+        
+        // Cancel button handler
+        cancelButton.addEventListener('click', () => {
+            if (currentRequestController) {
+                currentRequestController.abort();
+                addMessage('🛑 Cancelling request...');
+            }
+        });
 
         sendButton.addEventListener('click', sendMessage);
         

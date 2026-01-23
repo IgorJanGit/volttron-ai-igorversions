@@ -389,6 +389,7 @@ class AIService:
         self.last_action_details = {}
         self.function_tools = {}
         self.system_prompt = self._get_volttron_system_prompt()
+        self.cancellation_requested = False
         
         if self.agent:
             try:
@@ -487,7 +488,7 @@ class AIService:
                 }
             
             # Make the API request
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(endpoint, headers=headers, json=payload)
                 
                 if response.status_code == 200:
@@ -1637,9 +1638,28 @@ Please specify which agent to uninstall. Examples:
     # Agent Creator Implementation Methods (for fallback function tools)
     def _start_agent_creator_impl(self):
         """Implementation for starting the agent creator wizard."""
+        # Check if wizard is already active
+        if self.agent_creator_state.get("agent_creator_active"):
+            current_step = self.agent_creator_state.get("agent_creator_step", 1)
+            req_data = self.agent_creator_state.get("agent_requirements", {})
+            agent_name = req_data.get("name", "your agent")
+            
+            return f"""⚠️ **Agent Creator Already In Progress!**
+
+You're currently creating an agent called **"{agent_name}"** (Step {current_step}/10).
+
+**Options:**
+1. **Continue** - Type your response to the current step to keep going
+2. **Cancel** - Type **'cancel wizard'** to stop and start fresh
+3. **Restart** - Type **'restart wizard'** to clear and start from Step 1
+4. **Status** - Type **'wizard status'** to see your progress
+5. **Help** - Type **'wizard help'** for all commands
+
+**Tip:** Type 'wizard help' to see all available commands!
+"""
+        
         # Initialize wizard state in conversation history
         conversation_history = self._load_conversation_history()
-        
         self.agent_creator_state["agent_creator_active"] = True
         self.agent_creator_state["agent_creator_step"] = 1
         self.agent_creator_state["agent_requirements"] = {}
@@ -1689,6 +1709,78 @@ https://volttron.readthedocs.io/en/9.0.4/developing-volttron/developing-agents/a
         
         if not self.agent_creator_state.get("agent_creator_active"):
             return "❌ Agent creator not active. Start with 'create a new agent' first."
+        
+        # Check for cancellation commands FIRST before processing as wizard input
+        user_input_lower = user_input.lower().strip()
+        cancel_commands = [
+            'cancel', 'cancel wizard', 'stop', 'stop wizard', 'exit', 'exit wizard',
+            'quit', 'quit wizard', 'abort', 'leave', 'stop this', 'cancel this',
+            'stop agent creation', 'cancel agent creation', 'exit agent creation'
+        ]
+        
+        if any(cmd == user_input_lower or user_input_lower.startswith(cmd + ' ') for cmd in cancel_commands):
+            agent_name = self.agent_creator_state.get("agent_requirements", {}).get("name", "your agent")
+            current_step = self.agent_creator_state.get("agent_creator_step", 1)
+            self.agent_creator_state["agent_creator_active"] = False
+            self.agent_creator_state["agent_creator_step"] = 1
+            self.agent_creator_state["agent_requirements"] = {}
+            self._save_conversation_history()
+            return f"""✅ **Agent Creator Cancelled**
+
+Agent creation for "{agent_name}" has been cancelled at Step {current_step}/10.
+
+Your progress was not saved. Type **"create an agent"** to start fresh."""
+        
+        # Check for undo/back commands - go to previous step
+        undo_commands = [
+            'undo', 'back', 'go back', 'previous', 'previous step', 
+            'step back', 'undo step', 'reverse', 'go to previous step'
+        ]
+        
+        if any(cmd == user_input_lower or user_input_lower.startswith(cmd + ' ') for cmd in undo_commands):
+            current_step = self.agent_creator_state.get("agent_creator_step", 1)
+            
+            if current_step <= 1:
+                return """⚠️ **Can't Go Back**
+
+You're already at Step 1 (the first step).
+
+**Options:**
+• Continue answering the current step
+• Type **"restart wizard"** to start over
+• Type **"cancel wizard"** to cancel"""
+            
+            # Go back one step
+            previous_step = current_step - 1
+            self.agent_creator_state["agent_creator_step"] = previous_step
+            self._save_conversation_history()
+            
+            # Get the prompt for the previous step
+            req_data = self.agent_creator_state.get("agent_requirements", {})
+            _, _, previous_prompt = collect_requirements(req_data, previous_step, "")
+            previous_prompt_with_cta = self._add_wizard_cta(previous_prompt, previous_step, req_data)
+            
+            # Show what they previously entered for that step
+            previous_values = {
+                1: req_data.get('name', 'Not set'),
+                2: req_data.get('vip_identity', 'Not set'),
+                3: req_data.get('description', 'Not set'),
+                3.5: req_data.get('doc_url', 'Not set'),
+                4: req_data.get('template', 'Not set'),
+                5: ', '.join(req_data.get('subscribe_topics', [])) if req_data.get('subscribe_topics') else 'None',
+                6: ', '.join(req_data.get('publish_topics', [])) if req_data.get('publish_topics') else 'None',
+                7: req_data.get('schedule', 'Not set'),
+                8: ', '.join(req_data.get('dependencies', [])) if req_data.get('dependencies') else 'None',
+                9: req_data.get('package_format', 'Not set')
+            }
+            
+            previous_value = previous_values.get(previous_step, 'Not set')
+            
+            return f"""⬅️ **Going Back to Step {previous_step}/10**
+
+Your previous answer: **{previous_value}**
+
+{previous_prompt_with_cta}"""
 
         # Check if we need to show process info first
         if self.agent_creator_state.get("show_process_next"):
@@ -1808,16 +1900,24 @@ Let's begin!
 - `config/default_config.json` - Default configuration
 - `tests/test_agent.py` - Basic unit tests
 
-**Next Steps:**
+📋 **What would you like to do next?**
 
-1. **Review the code** - Check `{project_dir}/{req.name.replace('-', '_')}/agent.py`
-2. **Build the package** - I'll do this next automatically
-3. **Install and test** - We'll install it into VOLTTRON
+**Option 1: Quick Start (Recommended)**
+• Type: **"install and run"** or **"start it"**
+• I'll start VOLTTRON (if needed), build, install, and run your agent
 
+**Option 2: Step by Step**
+• Type: **"build"** - Just build the package
+• Type: **"install"** - Build and install (without starting)
+• Type: **"start volttron"** - Start VOLTTRON platform first
 
-⚠️ **Note:** Generated code may require adjustments to work correctly. Please review and test thoroughly.
+**Option 3: Manual Review**
+• Review the code in `{project_dir}` first
+• Come back when ready with: **"install my agent"**
 
-Ready to build the package? (Proceed automatically...)
+⚠️ **Note:** Generated code may require adjustments. Review before production use.
+
+**Your choice:** Type what you'd like to do next (or **"help"** for more options)
 """
         except Exception as e:
             return f"❌ Error creating agent project: {str(e)}"
@@ -2511,7 +2611,8 @@ Ready to build the package? (Proceed automatically...)
             if ai_webapp_url and ai_api_key:
                 self.custom_client = openai.OpenAI(
                     api_key=ai_api_key,
-                    base_url=ai_webapp_url
+                    base_url=ai_webapp_url,
+                    timeout=120.0
                 )
                 self.custom_model = self.model_name.split(":", 1)[1] if ":" in self.model_name else self.model_name
                 self.agent = self._create_agent_with_tools()
@@ -2959,22 +3060,244 @@ When users ask for VOLTTRON operations, use the appropriate function tools."""
         if any(indicator in message for indicator in ['http://', 'https://', 'github.com', 'www.']):
             return None
         
-        # Handle agent creation wizard triggers - MUST come before other agent patterns
-        # so "start agent creation" doesn't get confused with "start agent"
+        # Help command - show available commands
+        if message_lower in ['help', 'commands', 'what can you do', 'show commands', 'help me']:
+            return """📚 **VOLTTRON AI Assistant - Quick Reference**
+
+**🔧 VOLTTRON Platform:**
+• **start volttron** - Start the VOLTTRON platform
+• **stop volttron** - Stop the VOLTTRON platform
+• **volttron status** - Check if VOLTTRON is running
+
+**🧙 Agent Creation Wizard:**
+• **create agent** - Start the agent creator wizard
+• **create an agent** - Alternative way to start wizard
+• **agent creator** - Another way to start wizard
+
+**📋 Agent Management:**
+• **list agents** - Show created agents and installed agents
+• **install agent** - Install an agent to VOLTTRON
+• **start agent <name>** - Start a specific agent
+• **stop agent <name>** - Stop a specific agent
+• **agent status** - Show status of all agents
+
+**🧙 Wizard Commands (during creation):**
+• **back** or **undo** - Go back to previous step
+• **wizard status** - Show current progress
+• **cancel wizard** - Cancel agent creation
+• **restart wizard** - Start current agent over
+• **wizard help** - Show wizard-specific commands
+
+**💡 Tips:**
+• Be specific: "create agent" starts wizard, "start volttron" starts platform
+• Made a mistake? Type **"back"** to go to the previous step
+• During wizard creation, just answer the questions step by step
+• Press Enter to skip optional fields like dependencies
+
+Need more details? Just ask naturally - I'm here to help! 😊"""
+        
+        # Handle wizard control commands
+        if "cancel wizard" in message_lower or "stop wizard" in message_lower or "exit wizard" in message_lower:
+            if self.agent_creator_state.get("agent_creator_active"):
+                agent_name = self.agent_creator_state.get("agent_requirements", {}).get("name", "your agent")
+                self.agent_creator_state["agent_creator_active"] = False
+                self.agent_creator_state["agent_creator_step"] = 1
+                self.agent_creator_state["agent_requirements"] = {}
+                self._save_conversation_history()
+                return f"""✅ **Agent Creator Cancelled**
+
+Agent creation for "{agent_name}" has been cancelled.
+
+Type **"create an agent"** if you want to start fresh."""
+            else:
+                return "ℹ️ No agent creation is currently in progress."
+        
+        if "wizard status" in message_lower:
+            if self.agent_creator_state.get("agent_creator_active"):
+                current_step = self.agent_creator_state.get("agent_creator_step", 1)
+                req_data = self.agent_creator_state.get("agent_requirements", {})
+                agent_name = req_data.get("name", "Not set yet")
+                return f"""📊 **Agent Creator Status**
+
+- **Current Step:** {current_step}/10
+- **Agent Name:** {agent_name}
+- **Progress:** {"%.0f" % (current_step/10*100)}% complete
+
+Type your response to continue, or **"cancel wizard"** to stop."""
+            else:
+        
+                return "ℹ️ No agent creation is currently in progress."
+        # Restart wizard - start current agent over
+        if "restart wizard" in message_lower:
+            if self.agent_creator_state.get("agent_creator_active"):
+                agent_name = self.agent_creator_state.get("agent_requirements", {}).get("name", "your agent")
+                self.agent_creator_state["agent_creator_step"] = 1
+                self.agent_creator_state["agent_requirements"] = {}
+                self._save_conversation_history()
+                return f"""🔄 **Wizard Restarted**
+
+Agent "{agent_name}" has been cleared. Starting fresh from Step 1!
+
+📝  Step 1/10: Agent Name
+
+Choose a name for your agent (like naming a file or folder).
+
+What should we call your agent?"""
+            else:
+                return "ℹ️ No agent creation is currently in progress."
+        
+        # Help with wizard commands
+        if "wizard help" in message_lower or "wizard commands" in message_lower:
+            return """🧙 **Agent Creator Wizard - Commands**
+
+**Navigation:**
+• **back** or **undo** - Go back to the previous step
+• **wizard status** - Show current progress
+• **restart wizard** - Clear current agent and start Step 1
+• **cancel wizard** - Cancel and start fresh
+• **wizard help** - Show this help message
+
+**Tips:**
+• Made a mistake? Just type **"back"** to go to the previous step
+• Each step shows examples to guide you
+• Press Enter to skip optional steps (like dependencies)
+• Type 'yes' to accept suggestions
+• Your progress is automatically saved
+
+Currently creating? Type your answer to the current step to continue!"""
+        
+        # Show existing agents (works both in and out of wizard)
+        if "list agents" in message_lower or "show agents" in message_lower or "show agent" in message_lower or "list agent" in message_lower:
+            import os
+            from chat_app.volttron_commands import vctl_status
+            
+            agents_dir = "/home/igorj/volttron/volttron-ai-igorversions/agents"
+            
+            try:
+                # Get list of created agent directories
+                agent_dirs = [d for d in os.listdir(agents_dir) 
+                             if os.path.isdir(os.path.join(agents_dir, d)) and not d.startswith('.')]
+                agent_dirs.sort()
+                
+                # Get installed agents status from VOLTTRON
+                installed_status = vctl_status()
+                
+                response = ""
+                
+                # Show created agents
+                if agent_dirs:
+                    agent_list = "\n".join([f"  • {agent}" for agent in agent_dirs])
+                    count = len(agent_dirs)
+                    response += f"""📁 **Created Agents ({count})**
+
+{agent_list}
+
+Located in: `/home/igorj/volttron/volttron-ai-igorversions/agents/`
+
+"""
+                else:
+                    response += "📁 **Created Agents (0)**\n\nNo agents have been created yet.\n\n"
+                
+                # Show installed agents in VOLTTRON
+                response += f"""🔧 **Installed in VOLTTRON**
+
+{installed_status}"""
+                
+                # Add wizard status if in wizard mode
+                if self.agent_creator_state.get("agent_creator_active"):
+                    current_step = self.agent_creator_state.get("agent_creator_step", 1)
+                    response += f"\n\n**Wizard Status:** Step {current_step}/10\nType your response to continue creating your agent."
+                
+                return response
+                
+            except Exception as e:
+                return f"❌ Error listing agents: {e}"
+
+        
+        # Handle quick install and run commands for newly created agents
+        install_and_run_patterns = [
+            'install and run', 'start it', 'run it', 'install and start',
+            'build and run', 'build install and run', 'quick start',
+            'run the code', 'run agent', 'run my agent', 'lets run it',
+            'let\'s run', 'run recently generated', 'run generated code'
+        ]
+        
+        if any(pattern in message_lower for pattern in install_and_run_patterns):
+            # Check if there's a recently created agent
+            if self.agent_creator_state.get("agent_project_dir"):
+                from chat_app.volttron_commands import check_volttron_status, start_volttron
+                
+                # Check VOLTTRON status
+                status_result = check_volttron_status()
+                
+                # Start VOLTTRON if not running
+                if "not running" in status_result.lower():
+                    start_result = start_volttron()
+                    response = f"""🚀 **Starting VOLTTRON and installing agent...**
+
+{start_result}
+
+"""
+                else:
+                    response = "✓ VOLTTRON is already running\n\n"
+                
+                # Build and install the agent
+                install_result = self._agent_install_impl(start_agent=True)
+                return response + install_result
+            else:
+                return "❌ No agent found. Create an agent first with **'create agent'**"
+        
+        # Handle build-only command
+        if message_lower in ['build', 'build it', 'build package', 'build agent']:
+            if self.agent_creator_state.get("agent_project_dir"):
+                return self._agent_package_impl()
+            else:
+                return "❌ No agent found. Create an agent first with **'create agent'**"
+        
+        # Handle install command (without auto-start)
+        if message_lower in ['install', 'install it', 'install agent', 'install my agent']:
+            if self.agent_creator_state.get("agent_project_dir"):
+                return self._agent_install_impl(start_agent=False)
+            else:
+                return "❌ No agent found. Create an agent first with **'create agent'**"
+        
+        # Handle VOLTTRON platform commands FIRST (to avoid confusion with agent creation)
+        volttron_platform_patterns = [
+            'start volttron', 'launch volttron', 'run volttron',
+            'stop volttron', 'kill volttron', 'shutdown volttron',
+            'volttron status', 'check volttron', 'is volttron running'
+        ]
+        if any(pattern in message_lower for pattern in volttron_platform_patterns):
+            # Let this fall through to normal AI processing with function tools
+            return None
+        
+        # Handle agent creation wizard triggers
+        # Use more specific patterns to avoid confusion with VOLTTRON/agent commands
         agent_creation_patterns = [
-            'create agent', 'create custom agent', 'create new agent', 'create a agent',
+            # Most explicit patterns (recommended)
+            'create agent', 'create custom agent', 'create new agent', 'create a agent', 'create an agent',
             'agent creation', 'start agent creation', 'begin agent creation',
             'agent creator', 'start agent creator', 'launch agent creator',
             'build agent', 'build custom agent', 'build new agent',
             'make agent', 'make custom agent', 'make new agent',
             'develop agent', 'develop custom agent', 'develop new agent',
-            'agent wizard', 'start wizard', 'creation wizard',
-            'start agent', 'new agent'  # Common shortcuts
+            'agent wizard', 'creation wizard', 'new agent wizard',
+            'design agent', 'agent builder',
+            # Generic patterns (use carefully)
+            'new agent'
         ]
+        
+        # Exclude patterns that indicate VOLTTRON operations, not creation
+        volttron_operation_keywords = [
+            'install', 'uninstall', 'remove', 'delete', 'status of',
+            'start agent', 'stop agent', 'restart agent', 'run agent',  # These are for existing agents
+            'vctl', 'platform', 'running agent'
+        ]
+        
         if any(pattern in message_lower for pattern in agent_creation_patterns):
-            # Make sure it's not about installing/starting an existing agent
-            if not any(word in message_lower for word in ['install', 'uninstall', 'remove', 'delete', 'status of']):
-                print(f"Detected agent creation intent in '{message}' - calling agent creator wizard")
+            # Make sure it's not about VOLTTRON operations on existing agents
+            if not any(word in message_lower for word in volttron_operation_keywords):
+                print(f"🧙 Detected agent creation intent in '{message}' - starting wizard")
                 return self._start_agent_creator_impl()
         
         database_keywords = ['postgresql', 'postgres', 'mysql', 'database', 'db setup', 'sql setup']
